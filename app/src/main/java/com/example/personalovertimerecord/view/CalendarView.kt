@@ -3,16 +3,15 @@ package com.example.personalovertimerecord.view
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
-import android.graphics.Rect
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
-import com.example.personalovertimerecord.R
 import com.example.personalovertimerecord.data.Attendance
+import com.example.personalovertimerecord.data.OvertimeRecord
 import com.example.personalovertimerecord.data.OvertimeSettings
 import com.example.personalovertimerecord.data.SettingsManager
+import com.example.personalovertimerecord.utils.HolidayManager
 import com.example.personalovertimerecord.utils.OvertimeCalculator
-import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
 
@@ -28,6 +27,7 @@ class CalendarView @JvmOverloads constructor(
     private var currentYear: Int = calendar.get(Calendar.YEAR)
     
     private var attendanceData: Map<String, Attendance> = emptyMap()
+    private var overtimeRecordData: Map<String, OvertimeRecord> = emptyMap()
     private lateinit var settingsManager: SettingsManager
     private var settings: OvertimeSettings = OvertimeSettings()
     
@@ -35,6 +35,7 @@ class CalendarView @JvmOverloads constructor(
     
     private val weekdayLabels = arrayOf("日", "一", "二", "三", "四", "五", "六")
     
+    // 绘制缓存
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textSize = 36f
         textAlign = Paint.Align.CENTER
@@ -75,6 +76,15 @@ class CalendarView @JvmOverloads constructor(
         strokeWidth = 4f
     }
     
+    // 预计算的显示数据缓存
+    private data class DayDisplayData(
+        val overtimeHours: Double = 0.0,
+        val extraHours: Double = 0.0,
+        val pay: Double = 0.0
+    )
+    
+    private var displayCache: Map<String, DayDisplayData> = emptyMap()
+    
     interface OnDateClickListener {
         fun onDateClick(year: Int, month: Int, day: Int)
     }
@@ -104,7 +114,42 @@ class CalendarView @JvmOverloads constructor(
         settingsManager = manager
         settings = settingsManager.getSettings()
         attendanceData = data.associateBy { it.date }
+        overtimeRecordData = emptyMap()
+        updateDisplayCache()
         invalidate()
+    }
+    
+    fun setOvertimeRecordData(data: List<OvertimeRecord>, manager: SettingsManager) {
+        settingsManager = manager
+        settings = settingsManager.getSettings()
+        overtimeRecordData = data.associateBy { it.date }
+        attendanceData = emptyMap()
+        updateDisplayCache()
+        invalidate()
+    }
+    
+    private fun updateDisplayCache() {
+        val newCache = mutableMapOf<String, DayDisplayData>()
+        
+        attendanceData.forEach { (date, attendance) ->
+            val result = OvertimeCalculator.calculateOvertime(attendance, settings)
+            newCache[date] = DayDisplayData(
+                overtimeHours = result.overtimeHours,
+                extraHours = result.extraHours,
+                pay = result.estimatedPay
+            )
+        }
+        
+        overtimeRecordData.forEach { (date, record) ->
+            val result = OvertimeCalculator.calculateOvertime(record, settings)
+            newCache[date] = DayDisplayData(
+                overtimeHours = result.overtimeHours,
+                extraHours = result.extraHours,
+                pay = result.estimatedPay
+            )
+        }
+        
+        displayCache = newCache
     }
     
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
@@ -145,9 +190,8 @@ class CalendarView @JvmOverloads constructor(
             val centerY = cellHeight * row + cellHeight / 2
             val radius = minOf(cellWidth, cellHeight) * 0.25f
             
-            // 日期字符串
+            // 日期字符串（预格式化）
             val dateStr = String.format(Locale.getDefault(), "%d-%02d-%02d", currentYear, currentMonth + 1, day)
-            val attendance = attendanceData[dateStr]
             
             // 绘制选中背景
             if (day == selectedDay) {
@@ -170,12 +214,12 @@ class CalendarView @JvmOverloads constructor(
                 textPaint
             )
             
-            // 如果有加班记录，显示加班信息
-            attendance?.let {
-                val result = OvertimeCalculator.calculateOvertime(it, settings)
-                val totalOvertime = result.overtimeHours
-                val totalExtra = result.extraHours
-                val totalPay = result.estimatedPay
+            // 从缓存获取显示数据
+            val displayData = displayCache[dateStr]
+            if (displayData != null) {
+                val totalOvertime = displayData.overtimeHours
+                val totalExtra = displayData.extraHours
+                val totalPay = displayData.pay
                 
                 var textY = centerY + radius + 15
                 

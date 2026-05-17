@@ -118,7 +118,7 @@ class MainActivity : AppCompatActivity() {
             month = month,
             day = day,
             existingAttendance = existingAttendance,
-            onSave = { attendance ->
+            onSaveAttendance = { attendance ->
                 if (existingAttendance != null) {
                     viewModel.updateAttendance(attendance)
                 } else {
@@ -182,7 +182,7 @@ class MainActivity : AppCompatActivity() {
             month = attendance.date.substring(5, 7).toInt() - 1,
             day = attendance.date.substring(8, 10).toInt(),
             existingAttendance = attendance,
-            onSave = { updatedAttendance ->
+            onSaveAttendance = { updatedAttendance ->
                 viewModel.updateAttendance(updatedAttendance)
             },
             onDismiss = {

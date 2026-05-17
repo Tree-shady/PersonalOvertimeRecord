@@ -48,13 +48,8 @@ class SettingsActivity : AppCompatActivity() {
     private fun loadSettings() {
         val currentSettings = settingsManager.getSettings()
         
-        if (currentSettings.shiftType == 1) {
-            shiftGroup.check(R.id.shiftCustom)
-            customTimeLayout.visibility = View.VISIBLE
-        } else {
-            shiftGroup.check(R.id.shiftNormal)
-            customTimeLayout.visibility = View.GONE
-        }
+        shiftGroup.check(R.id.shiftNormal)
+        customTimeLayout.visibility = View.GONE
         
         findViewById<TextInputEditText>(R.id.etWorkStart).setText(currentSettings.workStartTime)
         findViewById<TextInputEditText>(R.id.etWorkEnd).setText(currentSettings.workEndTime)
@@ -75,41 +70,27 @@ class SettingsActivity : AppCompatActivity() {
     
     private fun saveSettings() {
         try {
-            val shiftType = if (shiftGroup.checkedRadioButtonId == R.id.shiftCustom) 1 else 0
-            
-            val workStart = if (shiftType == 1) {
-                findViewById<TextInputEditText>(R.id.etWorkStart).text?.toString() ?: "08:00"
-            } else {
-                "08:00"
-            }
-            val workEnd = if (shiftType == 1) {
-                findViewById<TextInputEditText>(R.id.etWorkEnd).text?.toString() ?: "17:00"
-            } else {
-                "17:00"
-            }
+            val workStart = findViewById<TextInputEditText>(R.id.etWorkStart).text?.toString() ?: "08:00"
+            val workEnd = findViewById<TextInputEditText>(R.id.etWorkEnd).text?.toString() ?: "17:00"
             
             val rateNormal = findViewById<TextInputEditText>(R.id.etRateNormal).text?.toString()?.toDoubleOrNull() ?: 1.5
             val rateWeekend = findViewById<TextInputEditText>(R.id.etRateWeekend).text?.toString()?.toDoubleOrNull() ?: 2.0
             val rateHoliday = findViewById<TextInputEditText>(R.id.etRateHoliday).text?.toString()?.toDoubleOrNull() ?: 3.0
             val baseSalary = findViewById<TextInputEditText>(R.id.etBaseSalary).text?.toString()?.toDoubleOrNull() ?: 5000.0
-            val performancePercent = findViewById<TextInputEditText>(R.id.etPerformancePercent).text?.toString()?.toDoubleOrNull() ?: 100.0
+            val performancePercent = findViewById<TextInputEditText>(R.id.etPerformancePercent).text?.toString()?.toDoubleOrNull() ?: 0.0
             val monthlyWorkDays = findViewById<TextInputEditText>(R.id.etMonthlyWorkDays).text?.toString()?.toDoubleOrNull() ?: 21.75
             val dailyWorkHours = findViewById<TextInputEditText>(R.id.etDailyWorkHours).text?.toString()?.toDoubleOrNull() ?: 8.0
             
             val settings = OvertimeSettings(
                 workStartTime = workStart,
                 workEndTime = workEnd,
-                lunchStartTime = "12:00",
-                lunchEndTime = "13:00",
-                overtimeStartAfter = 60,
                 overtimeRateNormal = rateNormal,
                 overtimeRateWeekend = rateWeekend,
                 overtimeRateHoliday = rateHoliday,
                 baseSalary = baseSalary,
                 performancePercent = performancePercent,
                 monthlyWorkDays = monthlyWorkDays,
-                dailyWorkHours = dailyWorkHours,
-                shiftType = shiftType
+                dailyWorkHours = dailyWorkHours
             )
             
             settingsManager.saveSettings(settings)
