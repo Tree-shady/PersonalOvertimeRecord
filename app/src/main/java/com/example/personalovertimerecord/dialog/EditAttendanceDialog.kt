@@ -20,6 +20,8 @@ class EditAttendanceDialog(
     private var dialog: Dialog? = null
     private lateinit var etCheckInTime: TextInputEditText
     private lateinit var etCheckOutTime: TextInputEditText
+    private lateinit var etManualOvertime: TextInputEditText
+    private lateinit var etManualExtra: TextInputEditText
     private lateinit var etNote: TextInputEditText
     
     fun show() {
@@ -43,10 +45,20 @@ class EditAttendanceDialog(
             
             etCheckInTime = d.findViewById(R.id.etCheckInTime)
             etCheckOutTime = d.findViewById(R.id.etCheckOutTime)
+            etManualOvertime = d.findViewById(R.id.etManualOvertime)
+            etManualExtra = d.findViewById(R.id.etManualExtra)
             etNote = d.findViewById(R.id.etNote)
             
             etCheckInTime.setText(attendance.checkInTime?.substring(0, 5) ?: "")
             etCheckOutTime.setText(attendance.checkOutTime?.substring(0, 5) ?: "")
+            
+            if (attendance.manualOvertimeHours >= 0) {
+                etManualOvertime.setText(attendance.manualOvertimeHours.toString())
+            }
+            if (attendance.manualExtraHours >= 0) {
+                etManualExtra.setText(attendance.manualExtraHours.toString())
+            }
+            
             etNote.setText(attendance.note ?: "")
         }
     }
@@ -66,6 +78,8 @@ class EditAttendanceDialog(
     private fun saveAttendance() {
         val checkInTimeStr = etCheckInTime.text?.toString()?.trim()
         val checkOutTimeStr = etCheckOutTime.text?.toString()?.trim()
+        val manualOvertimeStr = etManualOvertime.text?.toString()?.trim()
+        val manualExtraStr = etManualExtra.text?.toString()?.trim()
         val note = etNote.text?.toString()?.trim()
         
         val checkInTime = if (checkInTimeStr.isNullOrEmpty()) null else "${checkInTimeStr}:00"
@@ -76,9 +90,23 @@ class EditAttendanceDialog(
             return
         }
         
+        val manualOvertimeHours = if (manualOvertimeStr.isNullOrEmpty()) {
+            -1.0
+        } else {
+            manualOvertimeStr.toDoubleOrNull() ?: -1.0
+        }
+        
+        val manualExtraHours = if (manualExtraStr.isNullOrEmpty()) {
+            -1.0
+        } else {
+            manualExtraStr.toDoubleOrNull() ?: -1.0
+        }
+        
         val updatedAttendance = attendance.copy(
             checkInTime = checkInTime,
             checkOutTime = checkOutTime,
+            manualOvertimeHours = manualOvertimeHours,
+            manualExtraHours = manualExtraHours,
             note = if (note.isNullOrEmpty()) null else note
         )
         

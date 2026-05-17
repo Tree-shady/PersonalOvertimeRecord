@@ -21,7 +21,19 @@
             android:layout_height="?attr/actionBarSize"
             android:background="@color/colorPrimary"
             app:title="个人加班记录"
-            app:titleTextColor="@color/white" />
+            app:titleTextColor="@color/white">
+
+            <ImageButton
+                android:id="@+id/btnSettings"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_gravity="end"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/ic_settings"
+                app:tint="@color/white"
+                android:contentDescription="设置" />
+
+        </androidx.appcompat.widget.Toolbar>
 
     </com.google.android.material.appbar.AppBarLayout>
 
@@ -48,35 +60,42 @@
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical"
+                    android:orientation="horizontal"
                     android:padding="16dp">
 
-                    <TextView
-                        android:id="@+id/tvCurrentDate"
-                        android:layout_width="wrap_content"
+                    <LinearLayout
+                        android:layout_width="0dp"
                         android:layout_height="wrap_content"
-                        android:textSize="24sp"
-                        android:textStyle="bold"
-                        android:textColor="@color/colorPrimary"
-                        android:text="2024年01月01日" />
+                        android:layout_weight="1"
+                        android:orientation="vertical">
 
-                    <TextView
-                        android:id="@+id/tvCurrentWeekday"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textSize="14sp"
-                        android:textColor="@android:color/darker_gray"
-                        android:layout_marginTop="2dp"
-                        android:text="星期二" />
+                        <TextView
+                            android:id="@+id/tvCurrentDate"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textSize="20sp"
+                            android:textStyle="bold"
+                            android:textColor="@color/colorPrimary"
+                            android:text="2024年01月01日" />
+
+                        <TextView
+                            android:id="@+id/tvCurrentWeekday"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textSize="14sp"
+                            android:textColor="@android:color/darker_gray"
+                            android:layout_marginTop="2dp"
+                            android:text="星期二" />
+
+                    </LinearLayout>
 
                     <TextView
                         android:id="@+id/tvCurrentTime"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:textSize="40sp"
+                        android:textSize="32sp"
                         android:textStyle="bold"
                         android:textColor="#333333"
-                        android:layout_marginTop="8dp"
                         android:text="00:00:00" />
 
                 </LinearLayout>
@@ -89,83 +108,80 @@
                 android:layout_marginBottom="12dp"
                 app:cardElevation="3dp"
                 app:cardCornerRadius="12dp"
-                app:cardBackgroundColor="@color/white">
+                app:cardBackgroundColor="@android:color/holo_blue_light">
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="horizontal"
+                    android:orientation="vertical"
                     android:padding="16dp">
 
-                    <LinearLayout
-                        android:layout_width="0dp"
+                    <TextView
+                        android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:orientation="vertical"
-                        android:gravity="center">
-
-                        <ImageView
-                            android:layout_width="36dp"
-                            android:layout_height="36dp"
-                            android:src="@drawable/ic_check_in"
-                            app:tint="@android:color/holo_green_dark" />
-
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="上班"
-                            android:textSize="12sp"
-                            android:textColor="@android:color/darker_gray"
-                            android:layout_marginTop="4dp" />
-
-                        <TextView
-                            android:id="@+id/tvCheckInTime"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="--:--"
-                            android:textSize="18sp"
-                            android:textColor="@android:color/holo_green_dark"
-                            android:textStyle="bold"
-                            android:layout_marginTop="4dp" />
-
-                    </LinearLayout>
-
-                    <View
-                        android:layout_width="1dp"
-                        android:layout_height="match_parent"
-                        android:layout_marginHorizontal="16dp"
-                        android:background="#E0E0E0" />
+                        android:text="本月统计"
+                        android:textSize="16sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/white" />
 
                     <LinearLayout
-                        android:layout_width="0dp"
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:orientation="vertical"
-                        android:gravity="center">
+                        android:orientation="horizontal"
+                        android:layout_marginTop="12dp">
 
-                        <ImageView
-                            android:layout_width="36dp"
-                            android:layout_height="36dp"
-                            android:src="@drawable/ic_check_out"
-                            app:tint="@android:color/holo_red_dark" />
-
-                        <TextView
-                            android:layout_width="wrap_content"
+                        <LinearLayout
+                            android:layout_width="0dp"
                             android:layout_height="wrap_content"
-                            android:text="下班"
-                            android:textSize="12sp"
-                            android:textColor="@android:color/darker_gray"
-                            android:layout_marginTop="4dp" />
+                            android:layout_weight="1"
+                            android:orientation="vertical">
 
-                        <TextView
-                            android:id="@+id/tvCheckOutTime"
-                            android:layout_width="wrap_content"
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="总时长"
+                                android:textSize="12sp"
+                                android:textColor="@color/white"
+                                android:alpha="0.8" />
+
+                            <TextView
+                                android:id="@+id/tvTotalOvertime"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="0小时"
+                                android:textSize="20sp"
+                                android:textStyle="bold"
+                                android:textColor="@color/white"
+                                android:layout_marginTop="4dp" />
+
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:layout_width="0dp"
                             android:layout_height="wrap_content"
-                            android:text="--:--"
-                            android:textSize="18sp"
-                            android:textColor="@android:color/holo_red_dark"
-                            android:textStyle="bold"
-                            android:layout_marginTop="4dp" />
+                            android:layout_weight="1"
+                            android:orientation="vertical"
+                            android:gravity="end">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="本月工资"
+                                android:textSize="12sp"
+                                android:textColor="@color/white"
+                                android:alpha="0.8" />
+
+                            <TextView
+                                android:id="@+id/tvTotalPay"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="¥0.00"
+                                android:textSize="20sp"
+                                android:textStyle="bold"
+                                android:textColor="@color/white"
+                                android:layout_marginTop="4dp" />
+
+                        </LinearLayout>
 
                     </LinearLayout>
 
@@ -245,45 +261,17 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="打卡记录"
+                    android:text="加班记录"
                     android:textSize="16sp"
                     android:textStyle="bold"
                     android:textColor="#333333" />
 
-                <LinearLayout
+                <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical">
-
-                    <View
-                        android:layout_width="8dp"
-                        android:layout_height="8dp"
-                        android:background="@drawable/dot_green" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="上班"
-                        android:textSize="10sp"
-                        android:textColor="@android:color/darker_gray"
-                        android:layout_marginStart="4dp"
-                        android:layout_marginEnd="12dp" />
-
-                    <View
-                        android:layout_width="8dp"
-                        android:layout_height="8dp"
-                        android:background="@drawable/dot_red" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="下班"
-                        android:textSize="10sp"
-                        android:textColor="@android:color/darker_gray"
-                        android:layout_marginStart="4dp" />
-
-                </LinearLayout>
+                    android:text="点击日历添加记录"
+                    android:textSize="12sp"
+                    android:textColor="@android:color/darker_gray" />
 
             </LinearLayout>
 
@@ -296,45 +284,5 @@
         </LinearLayout>
 
     </ScrollView>
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:padding="16dp"
-        android:background="@color/white"
-        android:elevation="8dp">
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnCheckIn"
-            android:layout_width="0dp"
-            android:layout_height="56dp"
-            android:layout_weight="1"
-            android:layout_marginEnd="8dp"
-            android:text="上班打卡"
-            android:textSize="16sp"
-            android:textStyle="bold"
-            app:backgroundTint="@android:color/holo_green_dark"
-            app:cornerRadius="12dp"
-            app:icon="@drawable/ic_check_in"
-            app:iconGravity="textStart"
-            app:iconPadding="8dp" />
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnCheckOut"
-            android:layout_width="0dp"
-            android:layout_height="56dp"
-            android:layout_weight="1"
-            android:layout_marginStart="8dp"
-            android:text="下班打卡"
-            android:textSize="16sp"
-            android:textStyle="bold"
-            app:backgroundTint="@android:color/holo_red_dark"
-            app:cornerRadius="12dp"
-            app:icon="@drawable/ic_check_out"
-            app:iconGravity="textStart"
-            app:iconPadding="8dp" />
-
-    </LinearLayout>
 
 </LinearLayout>

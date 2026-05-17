@@ -1,20 +1,23 @@
 package com.example.personalovertimerecord
 
+import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.widget.ImageButton
 import android.widget.TextView
-import android.widget.Toast
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.example.personalovertimerecord.adapter.AttendanceAdapter
-import com.example.personalovertimerecord.dialog.EditAttendanceDialog
+import com.example.personalovertimerecord.data.Attendance
+import com.example.personalovertimerecord.data.OvertimeSettings
+import com.example.personalovertimerecord.data.SettingsManager
+import com.example.personalovertimerecord.dialog.AddOvertimeDialog
+import com.example.personalovertimerecord.utils.OvertimeCalculator
 import com.example.personalovertimerecord.view.CalendarView
 import com.example.personalovertimerecord.viewmodel.AttendanceViewModel
-import com.google.android.material.button.MaterialButton
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -24,6 +27,8 @@ class MainActivity : AppCompatActivity() {
     
     private val viewModel: AttendanceViewModel by viewModels()
     private lateinit var adapter: AttendanceAdapter
+    private lateinit var settingsManager: SettingsManager
+    private var currentSettings: OvertimeSettings = OvertimeSettings()
     private val handler = Handler(Looper.getMainLooper())
     private val updateTimeRunnable = object : Runnable {
         override fun run() {
@@ -40,6 +45,8 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         
+        settingsManager = SettingsManager(this)
+        
         setupCalendar()
         setupRecyclerView()
         setupButtons()
@@ -52,6 +59,11 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         handler.post(updateTimeRunnable)
+        currentSettings = settingsManager.getSettings()
+        adapter.setSettingsManager(settingsManager)
+        viewModel.allAttendance.value?.let { attendanceList ->
+            updateMonthlyStats(attendanceList)
+        }
     }
     
     override fun onPause() {
@@ -88,6 +100,36 @@ class MainActivity : AppCompatActivity() {
             updateMonthYearText()
             updateCalendarData()
         }
+        
+        calendarView.setOnDateClickListener(object : CalendarView.OnDateClickListener {
+            override fun onDateClick(year: Int, month: Int, day: Int) {
+                showAddOvertimeDialog(year, month, day)
+            }
+        })
+    }
+    
+    private fun showAddOvertimeDialog(year: Int, month: Int, day: Int) {
+        val dateStr = String.format(Locale.getDefault(), "%d-%02d-%02d", year, month + 1, day)
+        val existingAttendance = viewModel.allAttendance.value?.find { it.date == dateStr }
+        
+        val dialog = AddOvertimeDialog(
+            context = this,
+            year = year,
+            month = month,
+            day = day,
+            existingAttendance = existingAttendance,
+            onSave = { attendance ->
+                if (existingAttendance != null) {
+                    viewModel.updateAttendance(attendance)
+                } else {
+                    viewModel.insertAttendance(attendance)
+                }
+            },
+            onDismiss = {
+                updateCalendarData()
+            }
+        )
+        dialog.show()
     }
     
     private fun updateMonthYearText() {
@@ -98,33 +140,7 @@ class MainActivity : AppCompatActivity() {
     
     private fun updateCalendarData() {
         viewModel.allAttendance.value?.let { attendanceList ->
-            val checkInDates = mutableSetOf<Int>()
-            val checkOutDates = mutableSetOf<Int>()
-            
-            attendanceList.forEach { attendance ->
-                try {
-                    val dateStr = attendance.date
-                    val parts = dateStr.split("-")
-                    if (parts.size == 3) {
-                        val year = parts[0].toInt()
-                        val month = parts[1].toInt() - 1
-                        val day = parts[2].toInt()
-                        
-                        if (year == currentYear && month == currentMonth) {
-                            if (attendance.checkInTime != null) {
-                                checkInDates.add(day)
-                            }
-                            if (attendance.checkOutTime != null) {
-                                checkOutDates.add(day)
-                            }
-                        }
-                    }
-                } catch (e: Exception) {
-                }
-            }
-            
-            calendarView.setCheckInDates(checkInDates)
-            calendarView.setCheckOutDates(checkOutDates)
+            calendarView.setAttendanceData(attendanceList, settingsManager)
         }
     }
     
@@ -153,35 +169,33 @@ class MainActivity : AppCompatActivity() {
         adapter = AttendanceAdapter { attendance ->
             showEditDialog(attendance)
         }
+        adapter.setSettingsManager(settingsManager)
         val recyclerView = findViewById<RecyclerView>(R.id.recyclerView)
         recyclerView.adapter = adapter
         recyclerView.layoutManager = LinearLayoutManager(this)
     }
     
-    private fun showEditDialog(attendance: com.example.personalovertimerecord.data.Attendance) {
-        val dialog = EditAttendanceDialog(
+    private fun showEditDialog(attendance: Attendance) {
+        val dialog = AddOvertimeDialog(
             context = this,
-            attendance = attendance,
+            year = attendance.date.substring(0, 4).toInt(),
+            month = attendance.date.substring(5, 7).toInt() - 1,
+            day = attendance.date.substring(8, 10).toInt(),
+            existingAttendance = attendance,
             onSave = { updatedAttendance ->
                 viewModel.updateAttendance(updatedAttendance)
             },
-            onDelete = { id ->
-                viewModel.deleteAttendance(id)
+            onDismiss = {
+                updateCalendarData()
             }
         )
         dialog.show()
     }
     
     private fun setupButtons() {
-        val btnCheckIn = findViewById<MaterialButton>(R.id.btnCheckIn)
-        val btnCheckOut = findViewById<MaterialButton>(R.id.btnCheckOut)
-        
-        btnCheckIn.setOnClickListener {
-            viewModel.checkIn()
-        }
-        
-        btnCheckOut.setOnClickListener {
-            viewModel.checkOut()
+        val btnSettings = findViewById<ImageButton>(R.id.btnSettings)
+        btnSettings.setOnClickListener {
+            startActivity(Intent(this, SettingsActivity::class.java))
         }
     }
     
@@ -189,32 +203,27 @@ class MainActivity : AppCompatActivity() {
         viewModel.allAttendance.observe(this) { attendanceList ->
             adapter.submitList(attendanceList)
             updateCalendarData()
+            updateMonthlyStats(attendanceList)
+        }
+    }
+    
+    private fun updateMonthlyStats(attendanceList: List<Attendance>) {
+        var totalHours = 0.0
+        var totalOvertimePay = 0.0
+        
+        attendanceList.forEach { attendance ->
+            val result = OvertimeCalculator.calculateOvertime(attendance, currentSettings)
+            totalHours += result.overtimeHours + result.extraHours
+            totalOvertimePay += result.estimatedPay
         }
         
-        viewModel.todayAttendance.observe(this) { attendance ->
-            val checkInTimeText = findViewById<TextView>(R.id.tvCheckInTime)
-            val checkOutTimeText = findViewById<TextView>(R.id.tvCheckOutTime)
-            
-            checkInTimeText.text = attendance?.checkInTime?.substring(0, 5) ?: "--:--"
-            checkOutTimeText.text = attendance?.checkOutTime?.substring(0, 5) ?: "--:--"
-        }
+        val performanceBonus = currentSettings.baseSalary * (currentSettings.performancePercent / 100.0)
+        val totalPay = currentSettings.baseSalary + performanceBonus + totalOvertimePay
         
-        viewModel.isCheckIn.observe(this) { isCheckIn ->
-            val btnCheckIn = findViewById<MaterialButton>(R.id.btnCheckIn)
-            btnCheckIn.isEnabled = !isCheckIn
-            btnCheckIn.alpha = if (isCheckIn) 0.5f else 1f
-        }
+        val tvTotalOvertime = findViewById<TextView>(R.id.tvTotalOvertime)
+        val tvTotalPay = findViewById<TextView>(R.id.tvTotalPay)
         
-        viewModel.isCheckOut.observe(this) { isCheckOut ->
-            val btnCheckOut = findViewById<MaterialButton>(R.id.btnCheckOut)
-            btnCheckOut.isEnabled = viewModel.isCheckIn.value == true && !isCheckOut
-            btnCheckOut.alpha = if (viewModel.isCheckIn.value == true && !isCheckOut) 1f else 0.5f
-        }
-        
-        viewModel.message.observe(this) { message ->
-            if (message.isNotEmpty()) {
-                Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
-            }
-        }
+        tvTotalOvertime.text = OvertimeCalculator.formatHours(totalHours)
+        tvTotalPay.text = OvertimeCalculator.formatMoney(totalPay)
     }
 }

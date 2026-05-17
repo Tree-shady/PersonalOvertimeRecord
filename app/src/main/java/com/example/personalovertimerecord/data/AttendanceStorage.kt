@@ -82,6 +82,8 @@ class AttendanceStorage(context: Context) {
             put("checkInTimestamp", attendance.checkInTimestamp)
             put("checkOutTimestamp", attendance.checkOutTimestamp)
             put("note", attendance.note)
+            put("manualOvertimeHours", attendance.manualOvertimeHours)
+            put("manualExtraHours", attendance.manualExtraHours)
         }
     }
     
@@ -93,7 +95,9 @@ class AttendanceStorage(context: Context) {
             checkOutTime = json.optString("checkOutTime", null),
             checkInTimestamp = json.optLong("checkInTimestamp", 0L).takeIf { it != 0L },
             checkOutTimestamp = json.optLong("checkOutTimestamp", 0L).takeIf { it != 0L },
-            note = json.optString("note", null)
+            note = json.optString("note", null),
+            manualOvertimeHours = json.optDouble("manualOvertimeHours", -1.0),
+            manualExtraHours = json.optDouble("manualExtraHours", -1.0)
         )
     }
     

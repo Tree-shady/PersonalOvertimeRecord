@@ -69,6 +69,10 @@ class AttendanceRepository(private val storage: AttendanceStorage) {
         storage.updateAttendance(attendance)
     }
     
+    suspend fun insertAttendance(attendance: Attendance) = withContext(Dispatchers.IO) {
+        storage.saveAttendance(attendance)
+    }
+    
     suspend fun deleteAttendance(id: Long) = withContext(Dispatchers.IO) {
         storage.deleteAttendance(id)
     }
