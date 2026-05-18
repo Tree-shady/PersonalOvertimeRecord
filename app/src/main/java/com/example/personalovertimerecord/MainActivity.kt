@@ -4,28 +4,31 @@ import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.widget.ImageButton
-import android.widget.TextView
+import android.widget.Toast
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
 import com.example.personalovertimerecord.adapter.AttendanceAdapter
 import com.example.personalovertimerecord.data.Attendance
 import com.example.personalovertimerecord.data.OvertimeSettings
 import com.example.personalovertimerecord.data.SettingsManager
+import com.example.personalovertimerecord.databinding.ActivityMainBinding
 import com.example.personalovertimerecord.dialog.AddOvertimeDialog
+import com.example.personalovertimerecord.utils.DateUtils
 import com.example.personalovertimerecord.utils.OvertimeCalculator
 import com.example.personalovertimerecord.view.CalendarView
 import com.example.personalovertimerecord.viewmodel.AttendanceViewModel
-import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
-import java.util.Locale
 
 class MainActivity : AppCompatActivity() {
     
+    companion object {
+        private const val TIME_UPDATE_INTERVAL = 1000L  // 1 second
+    }
+    
     private val viewModel: AttendanceViewModel by viewModels()
+    private lateinit var binding: ActivityMainBinding
     private lateinit var adapter: AttendanceAdapter
     private lateinit var settingsManager: SettingsManager
     private var currentSettings: OvertimeSettings = OvertimeSettings()
@@ -33,7 +36,7 @@ class MainActivity : AppCompatActivity() {
     private val updateTimeRunnable = object : Runnable {
         override fun run() {
             updateCurrentTime()
-            handler.postDelayed(this, 1000)
+            handler.postDelayed(this, TIME_UPDATE_INTERVAL)
         }
     }
     
@@ -43,7 +46,8 @@ class MainActivity : AppCompatActivity() {
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
+        binding = ActivityMainBinding.inflate(layoutInflater)
+        setContentView(binding.root)
         
         settingsManager = SettingsManager(this)
         
@@ -72,14 +76,11 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun setupCalendar() {
-        calendarView = findViewById(R.id.calendarView)
-        val tvMonthYear = findViewById<TextView>(R.id.tvMonthYear)
-        val btnPrevMonth = findViewById<ImageButton>(R.id.btnPrevMonth)
-        val btnNextMonth = findViewById<ImageButton>(R.id.btnNextMonth)
+        calendarView = binding.calendarView
         
         updateMonthYearText()
         
-        btnPrevMonth.setOnClickListener {
+        binding.btnPrevMonth.setOnClickListener {
             if (currentMonth == 0) {
                 currentMonth = 11
                 currentYear--
@@ -90,7 +91,7 @@ class MainActivity : AppCompatActivity() {
             updateCalendarData()
         }
         
-        btnNextMonth.setOnClickListener {
+        binding.btnNextMonth.setOnClickListener {
             if (currentMonth == 11) {
                 currentMonth = 0
                 currentYear++
@@ -109,7 +110,7 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun showAddOvertimeDialog(year: Int, month: Int, day: Int) {
-        val dateStr = String.format(Locale.getDefault(), "%d-%02d-%02d", year, month + 1, day)
+        val dateStr = DateUtils.formatDate(year, month, day)
         val existingAttendance = viewModel.allAttendance.value?.find { it.date == dateStr }
         
         val dialog = AddOvertimeDialog(
@@ -133,8 +134,7 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun updateMonthYearText() {
-        val tvMonthYear = findViewById<TextView>(R.id.tvMonthYear)
-        tvMonthYear.text = "${currentYear}年${currentMonth + 1}月"
+        binding.tvMonthYear.text = "${currentYear}年${currentMonth + 1}月"
         calendarView.setMonth(currentYear, currentMonth)
     }
     
@@ -145,24 +145,13 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun updateCurrentTime() {
-        val timeTextView = findViewById<TextView>(R.id.tvCurrentTime)
-        val currentTime = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
-        timeTextView.text = currentTime
+        binding.tvCurrentTime.text = DateUtils.getCurrentTime()
     }
     
     private fun updateCurrentDate() {
-        val dateTextView = findViewById<TextView>(R.id.tvCurrentDate)
-        val weekdayTextView = findViewById<TextView>(R.id.tvCurrentWeekday)
-        
-        val dateFormat = SimpleDateFormat("yyyy年MM月dd日", Locale.getDefault())
-        val weekdayFormat = SimpleDateFormat("EEEE", Locale.CHINA)
-        
         val currentDate = Date()
-        dateTextView.text = dateFormat.format(currentDate)
-        
-        val weekday = weekdayFormat.format(currentDate)
-        val weekdayWithPrefix = if (weekday.startsWith("星期")) weekday else "星期${weekday}"
-        weekdayTextView.text = weekdayWithPrefix
+        binding.tvCurrentDate.text = DateUtils.formatToChineseDate(currentDate)
+        binding.tvCurrentWeekday.text = DateUtils.getChineseWeekday(currentDate)
     }
     
     private fun setupRecyclerView() {
@@ -170,41 +159,42 @@ class MainActivity : AppCompatActivity() {
             showEditDialog(attendance)
         }
         adapter.setSettingsManager(settingsManager)
-        val recyclerView = findViewById<RecyclerView>(R.id.recyclerView)
-        recyclerView.adapter = adapter
-        recyclerView.layoutManager = LinearLayoutManager(this)
+        binding.recyclerView.adapter = adapter
+        binding.recyclerView.layoutManager = LinearLayoutManager(this)
     }
     
     private fun showEditDialog(attendance: Attendance) {
-        val dialog = AddOvertimeDialog(
-            context = this,
-            year = attendance.date.substring(0, 4).toInt(),
-            month = attendance.date.substring(5, 7).toInt() - 1,
-            day = attendance.date.substring(8, 10).toInt(),
-            existingAttendance = attendance,
-            onSaveAttendance = { updatedAttendance ->
-                viewModel.updateAttendance(updatedAttendance)
-            },
-            onDismiss = {
-                updateCalendarData()
-            }
-        )
-        dialog.show()
+        val dateParts = DateUtils.extractDateParts(attendance.date)
+        if (dateParts != null) {
+            val (year, month, day) = dateParts
+            
+            val dialog = AddOvertimeDialog(
+                context = this,
+                year = year,
+                month = month,
+                day = day,
+                existingAttendance = attendance,
+                onSaveAttendance = { updatedAttendance ->
+                    viewModel.updateAttendance(updatedAttendance)
+                },
+                onDismiss = {
+                    updateCalendarData()
+                }
+            )
+            dialog.show()
+        }
     }
     
     private fun setupButtons() {
-        val btnSettings = findViewById<ImageButton>(R.id.btnSettings)
-        btnSettings.setOnClickListener {
+        binding.btnSettings.setOnClickListener {
             startActivity(Intent(this, SettingsActivity::class.java))
         }
         
-        val btnReport = findViewById<ImageButton>(R.id.btnReport)
-        btnReport.setOnClickListener {
+        binding.btnReport.setOnClickListener {
             startActivity(Intent(this, ReportActivity::class.java))
         }
         
-        val btnCloudSync = findViewById<ImageButton>(R.id.btnCloudSync)
-        btnCloudSync.setOnClickListener {
+        binding.btnCloudSync.setOnClickListener {
             startActivity(Intent(this, CloudSyncActivity::class.java))
         }
     }
@@ -214,6 +204,13 @@ class MainActivity : AppCompatActivity() {
             adapter.submitList(attendanceList)
             updateCalendarData()
             updateMonthlyStats(attendanceList)
+        }
+        
+        viewModel.errorMessage.observe(this) { errorMsg ->
+            if (!errorMsg.isNullOrEmpty()) {
+                Toast.makeText(this, errorMsg, Toast.LENGTH_LONG).show()
+                viewModel.clearErrorMessage()
+            }
         }
     }
     
@@ -230,10 +227,7 @@ class MainActivity : AppCompatActivity() {
         val performanceBonus = currentSettings.baseSalary * (currentSettings.performancePercent / 100.0)
         val totalPay = currentSettings.baseSalary + performanceBonus + totalOvertimePay
         
-        val tvTotalOvertime = findViewById<TextView>(R.id.tvTotalOvertime)
-        val tvTotalPay = findViewById<TextView>(R.id.tvTotalPay)
-        
-        tvTotalOvertime.text = OvertimeCalculator.formatHours(totalHours)
-        tvTotalPay.text = OvertimeCalculator.formatMoney(totalPay)
+        binding.tvTotalOvertime.text = OvertimeCalculator.formatHours(totalHours)
+        binding.tvTotalPay.text = OvertimeCalculator.formatMoney(totalPay)
     }
 }

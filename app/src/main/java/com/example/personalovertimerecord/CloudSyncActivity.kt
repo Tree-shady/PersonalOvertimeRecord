@@ -1,49 +1,32 @@
 package com.example.personalovertimerecord
 
 import android.os.Bundle
-import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.example.personalovertimerecord.data.FirebaseSyncManager
 import com.example.personalovertimerecord.data.SyncState
-import com.google.android.material.button.MaterialButton
-import com.google.android.material.progressindicator.LinearProgressIndicator
-import com.google.android.material.textfield.TextInputEditText
+import com.example.personalovertimerecord.databinding.ActivityCloudSyncBinding
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
 class CloudSyncActivity : AppCompatActivity() {
-
-    private var firebaseSyncManager: FirebaseSyncManager? = null
     
-    private var loginContainer: View? = null
-    private var logoutContainer: View? = null
-    private var etEmail: TextInputEditText? = null
-    private var etPassword: TextInputEditText? = null
-    private var btnBack: MaterialButton? = null
-    private var btnLogin: MaterialButton? = null
-    private var btnRegister: MaterialButton? = null
-    private var btnLogout: MaterialButton? = null
-    private var btnSyncToCloud: MaterialButton? = null
-    private var btnSyncFromCloud: MaterialButton? = null
-    private var btnSyncAll: MaterialButton? = null
-    private var tvUserInfo: android.widget.TextView? = null
-    private var tvSyncStatus: android.widget.TextView? = null
-    private var progressIndicator: LinearProgressIndicator? = null
+    private lateinit var binding: ActivityCloudSyncBinding
+    private var firebaseSyncManager: FirebaseSyncManager? = null
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
         try {
-            setContentView(R.layout.activity_cloud_sync)
+            binding = ActivityCloudSyncBinding.inflate(layoutInflater)
+            setContentView(binding.root)
             
             supportActionBar?.setDisplayHomeAsUpEnabled(true)
             title = "云同步"
             
             firebaseSyncManager = FirebaseSyncManager.getInstance(this)
             
-            initViews()
             setupClickListeners()
             observeState()
         } catch (e: Exception) {
@@ -52,29 +35,8 @@ class CloudSyncActivity : AppCompatActivity() {
         }
     }
     
-    private fun initViews() {
-        try {
-            loginContainer = findViewById(R.id.loginContainer)
-            logoutContainer = findViewById(R.id.logoutContainer)
-            etEmail = findViewById(R.id.etEmail)
-            etPassword = findViewById(R.id.etPassword)
-            btnBack = findViewById(R.id.btnBack)
-            btnLogin = findViewById(R.id.btnLogin)
-            btnRegister = findViewById(R.id.btnRegister)
-            btnLogout = findViewById(R.id.btnLogout)
-            btnSyncToCloud = findViewById(R.id.btnSyncToCloud)
-            btnSyncFromCloud = findViewById(R.id.btnSyncFromCloud)
-            btnSyncAll = findViewById(R.id.btnSyncAll)
-            tvUserInfo = findViewById(R.id.tvUserInfo)
-            tvSyncStatus = findViewById(R.id.tvSyncStatus)
-            progressIndicator = findViewById(R.id.progressIndicator)
-        } catch (e: Exception) {
-            Toast.makeText(this, "初始化视图失败: ${e.message}", Toast.LENGTH_SHORT).show()
-        }
-    }
-    
     private fun setupClickListeners() {
-        btnBack?.setOnClickListener {
+        binding.btnBack.setOnClickListener {
             try {
                 finish()
             } catch (e: Exception) {
@@ -82,9 +44,9 @@ class CloudSyncActivity : AppCompatActivity() {
             }
         }
         
-        btnLogin?.setOnClickListener {
-            val email = etEmail?.text?.toString()?.trim() ?: ""
-            val password = etPassword?.text?.toString() ?: ""
+        binding.btnLogin.setOnClickListener {
+            val email = binding.etEmail.text?.toString()?.trim() ?: ""
+            val password = binding.etPassword.text?.toString() ?: ""
             
             if (validateInput(email, password)) {
                 lifecycleScope.launch {
@@ -101,9 +63,9 @@ class CloudSyncActivity : AppCompatActivity() {
             }
         }
         
-        btnRegister?.setOnClickListener {
-            val email = etEmail?.text?.toString()?.trim() ?: ""
-            val password = etPassword?.text?.toString() ?: ""
+        binding.btnRegister.setOnClickListener {
+            val email = binding.etEmail.text?.toString()?.trim() ?: ""
+            val password = binding.etPassword.text?.toString() ?: ""
             
             if (validateInput(email, password)) {
                 lifecycleScope.launch {
@@ -120,7 +82,7 @@ class CloudSyncActivity : AppCompatActivity() {
             }
         }
         
-        btnLogout?.setOnClickListener {
+        binding.btnLogout.setOnClickListener {
             try {
                 firebaseSyncManager?.signOut()
                 Toast.makeText(this, "已退出登录", Toast.LENGTH_SHORT).show()
@@ -129,7 +91,7 @@ class CloudSyncActivity : AppCompatActivity() {
             }
         }
         
-        btnSyncToCloud?.setOnClickListener {
+        binding.btnSyncToCloud.setOnClickListener {
             lifecycleScope.launch {
                 try {
                     val result = firebaseSyncManager?.syncToCloud()
@@ -143,7 +105,7 @@ class CloudSyncActivity : AppCompatActivity() {
             }
         }
         
-        btnSyncFromCloud?.setOnClickListener {
+        binding.btnSyncFromCloud.setOnClickListener {
             lifecycleScope.launch {
                 try {
                     val result = firebaseSyncManager?.syncFromCloud()
@@ -157,7 +119,7 @@ class CloudSyncActivity : AppCompatActivity() {
             }
         }
         
-        btnSyncAll?.setOnClickListener {
+        binding.btnSyncAll.setOnClickListener {
             lifecycleScope.launch {
                 try {
                     val result = firebaseSyncManager?.syncAll()
@@ -183,9 +145,9 @@ class CloudSyncActivity : AppCompatActivity() {
             lifecycleScope.launch {
                 firebaseSyncManager?.currentUser?.collectLatest { user ->
                     user?.let {
-                        tvUserInfo?.text = "当前用户: ${it.email}"
+                        binding.tvUserInfo.text = "当前用户: ${it.email}"
                     } ?: run {
-                        tvUserInfo?.text = "未登录"
+                        binding.tvUserInfo.text = "未登录"
                     }
                 }
             }
@@ -203,12 +165,12 @@ class CloudSyncActivity : AppCompatActivity() {
     private fun updateLoginState(isLoggedIn: Boolean) {
         try {
             if (isLoggedIn) {
-                loginContainer?.visibility = View.GONE
-                logoutContainer?.visibility = View.VISIBLE
+                binding.loginContainer.visibility = android.view.View.GONE
+                binding.logoutContainer.visibility = android.view.View.VISIBLE
             } else {
-                loginContainer?.visibility = View.VISIBLE
-                logoutContainer?.visibility = View.GONE
-                etPassword?.text?.clear()
+                binding.loginContainer.visibility = android.view.View.VISIBLE
+                binding.logoutContainer.visibility = android.view.View.GONE
+                binding.etPassword.text?.clear()
             }
         } catch (e: Exception) {
             // 忽略更新错误
@@ -219,23 +181,23 @@ class CloudSyncActivity : AppCompatActivity() {
         try {
             when (state) {
                 is SyncState.Idle -> {
-                    progressIndicator?.visibility = View.GONE
-                    tvSyncStatus?.text = "状态: 空闲"
+                    binding.progressIndicator.visibility = android.view.View.GONE
+                    binding.tvSyncStatus.text = "状态: 空闲"
                     setButtonsEnabled(true)
                 }
                 is SyncState.Loading -> {
-                    progressIndicator?.visibility = View.VISIBLE
-                    tvSyncStatus?.text = state.message
+                    binding.progressIndicator.visibility = android.view.View.VISIBLE
+                    binding.tvSyncStatus.text = state.message
                     setButtonsEnabled(false)
                 }
                 is SyncState.Success -> {
-                    progressIndicator?.visibility = View.GONE
-                    tvSyncStatus?.text = state.message
+                    binding.progressIndicator.visibility = android.view.View.GONE
+                    binding.tvSyncStatus.text = state.message
                     setButtonsEnabled(true)
                 }
                 is SyncState.Error -> {
-                    progressIndicator?.visibility = View.GONE
-                    tvSyncStatus?.text = state.message
+                    binding.progressIndicator.visibility = android.view.View.GONE
+                    binding.tvSyncStatus.text = state.message
                     setButtonsEnabled(true)
                 }
             }
@@ -245,33 +207,33 @@ class CloudSyncActivity : AppCompatActivity() {
     }
     
     private fun setButtonsEnabled(enabled: Boolean) {
-        btnLogin?.isEnabled = enabled
-        btnRegister?.isEnabled = enabled
-        btnLogout?.isEnabled = enabled
-        btnSyncToCloud?.isEnabled = enabled
-        btnSyncFromCloud?.isEnabled = enabled
-        btnSyncAll?.isEnabled = enabled
+        binding.btnLogin.isEnabled = enabled
+        binding.btnRegister.isEnabled = enabled
+        binding.btnLogout.isEnabled = enabled
+        binding.btnSyncToCloud.isEnabled = enabled
+        binding.btnSyncFromCloud.isEnabled = enabled
+        binding.btnSyncAll.isEnabled = enabled
     }
     
     private fun validateInput(email: String, password: String): Boolean {
         if (email.isEmpty()) {
-            etEmail?.error = "请输入邮箱"
+            binding.etEmail.error = "请输入邮箱"
             return false
         }
         if (!android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
-            etEmail?.error = "请输入有效的邮箱地址"
+            binding.etEmail.error = "请输入有效的邮箱地址"
             return false
         }
         if (password.isEmpty()) {
-            etPassword?.error = "请输入密码"
+            binding.etPassword.error = "请输入密码"
             return false
         }
         if (password.length < 6) {
-            etPassword?.error = "密码至少需要6位"
+            binding.etPassword.error = "密码至少需要6位"
             return false
         }
-        etEmail?.error = null
-        etPassword?.error = null
+        binding.etEmail.error = null
+        binding.etPassword.error = null
         return true
     }
     

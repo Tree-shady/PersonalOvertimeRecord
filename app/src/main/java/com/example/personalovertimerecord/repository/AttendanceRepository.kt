@@ -1,79 +1,61 @@
 package com.example.personalovertimerecord.repository
 
 import com.example.personalovertimerecord.data.Attendance
-import com.example.personalovertimerecord.data.AttendanceStorage
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import kotlinx.coroutines.flow.Flow
 
-class AttendanceRepository(private val storage: AttendanceStorage) {
+/**
+ * 考勤记录仓储接口
+ * 定义数据访问的统一接口，便于切换数据源实现
+ */
+interface AttendanceRepository {
     
-    fun getAllAttendance(): List<Attendance> = storage.getAllAttendance()
+    /**
+     * 获取所有记录（Flow版本，支持响应式更新）
+     */
+    fun getAllAttendanceFlow(): Flow<List<Attendance>>
     
-    suspend fun getTodayAttendance(): Attendance? = withContext(Dispatchers.IO) {
-        val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
-        storage.getAttendanceByDate(today)
-    }
+    /**
+     * 获取所有记录（同步版本）
+     */
+    suspend fun getAllAttendance(): List<Attendance>
     
-    suspend fun checkIn(note: String? = null): Long = withContext(Dispatchers.IO) {
-        val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
-        val time = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
-        val timestamp = System.currentTimeMillis()
-        
-        val existingAttendance = storage.getAttendanceByDate(today)
-        
-        if (existingAttendance != null && existingAttendance.checkInTime == null) {
-            val updatedAttendance = existingAttendance.copy(
-                checkInTime = time,
-                checkInTimestamp = timestamp,
-                note = note
-            )
-            storage.saveAttendance(updatedAttendance)
-            existingAttendance.id
-        } else if (existingAttendance == null) {
-            val newAttendance = Attendance(
-                id = 0L,
-                date = today,
-                checkInTime = time,
-                checkInTimestamp = timestamp,
-                note = note
-            )
-            storage.insertAttendance(newAttendance)
-        } else {
-            existingAttendance.id
-        }
-    }
+    /**
+     * 根据日期获取记录
+     */
+    suspend fun getAttendanceByDate(date: String): Attendance?
     
-    suspend fun checkOut(note: String? = null): Boolean = withContext(Dispatchers.IO) {
-        val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
-        val existingAttendance = storage.getAttendanceByDate(today)
-        
-        if (existingAttendance != null && existingAttendance.checkOutTime == null) {
-            val time = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
-            val timestamp = System.currentTimeMillis()
-            val updatedAttendance = existingAttendance.copy(
-                checkOutTime = time,
-                checkOutTimestamp = timestamp,
-                note = note ?: existingAttendance.note
-            )
-            storage.saveAttendance(updatedAttendance)
-            true
-        } else {
-            false
-        }
-    }
+    /**
+     * 根据ID获取记录
+     */
+    suspend fun getAttendanceById(id: Long): Attendance?
     
-    suspend fun updateAttendance(attendance: Attendance) = withContext(Dispatchers.IO) {
-        storage.updateAttendance(attendance)
-    }
+    /**
+     * 插入或更新记录
+     */
+    suspend fun saveAttendance(attendance: Attendance): Long
     
-    suspend fun insertAttendance(attendance: Attendance) = withContext(Dispatchers.IO) {
-        storage.saveAttendance(attendance)
-    }
+    /**
+     * 插入新记录
+     */
+    suspend fun insertAttendance(attendance: Attendance): Long
     
-    suspend fun deleteAttendance(id: Long) = withContext(Dispatchers.IO) {
-        storage.deleteAttendance(id)
-    }
+    /**
+     * 更新记录
+     */
+    suspend fun updateAttendance(attendance: Attendance)
+    
+    /**
+     * 删除记录
+     */
+    suspend fun deleteAttendance(id: Long)
+    
+    /**
+     * 删除所有记录
+     */
+    suspend fun deleteAllAttendance()
+    
+    /**
+     * 获取记录数量
+     */
+    suspend fun getCount(): Int
 }

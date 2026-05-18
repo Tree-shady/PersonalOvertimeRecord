@@ -1,24 +1,22 @@
 package com.example.personalovertimerecord
 
 import android.os.Bundle
-import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
-import androidx.appcompat.widget.Toolbar
 import androidx.lifecycle.lifecycleScope
 import com.example.personalovertimerecord.data.Attendance
+import com.example.personalovertimerecord.data.DayType
 import com.example.personalovertimerecord.data.OvertimeSettings
 import com.example.personalovertimerecord.data.SettingsManager
+import com.example.personalovertimerecord.databinding.ActivityReportBinding
+import com.example.personalovertimerecord.utils.HolidayManager
 import com.example.personalovertimerecord.utils.OvertimeCalculator
 import com.example.personalovertimerecord.utils.SalaryCalculator
-import com.github.mikephil.charting.charts.BarChart
-import com.github.mikephil.charting.charts.LineChart
-import com.github.mikephil.charting.charts.PieChart
 import com.github.mikephil.charting.data.BarData
 import com.github.mikephil.charting.data.BarDataSet
 import com.github.mikephil.charting.data.BarEntry
+import com.github.mikephil.charting.data.Entry
 import com.github.mikephil.charting.data.LineData
 import com.github.mikephil.charting.data.LineDataSet
-import com.github.mikephil.charting.data.Entry
 import com.github.mikephil.charting.data.PieData
 import com.github.mikephil.charting.data.PieDataSet
 import com.github.mikephil.charting.data.PieEntry
@@ -26,18 +24,20 @@ import com.github.mikephil.charting.formatter.IndexAxisValueFormatter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.text.SimpleDateFormat
-import java.util.*
+import java.util.Calendar
+import java.util.Locale
 
 class ReportActivity : AppCompatActivity() {
     
+    private lateinit var binding: ActivityReportBinding
     private lateinit var settingsManager: SettingsManager
     private lateinit var settings: OvertimeSettings
     private var currentYear = Calendar.getInstance().get(Calendar.YEAR)
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_report)
+        binding = ActivityReportBinding.inflate(layoutInflater)
+        setContentView(binding.root)
         
         settingsManager = SettingsManager(this)
         settings = settingsManager.getSettings()
@@ -47,13 +47,10 @@ class ReportActivity : AppCompatActivity() {
     }
     
     private fun setupToolbar() {
-        val toolbar = findViewById<Toolbar>(R.id.toolbar)
-        setSupportActionBar(toolbar)
+        setSupportActionBar(binding.toolbar)
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
-        toolbar.setNavigationOnClickListener { finish() }
-        
-        val tvYear = findViewById<TextView>(R.id.tvYear)
-        tvYear.text = "${currentYear}年"
+        binding.toolbar.setNavigationOnClickListener { finish() }
+        binding.tvYear.text = "${currentYear}年"
     }
     
     private fun loadData() {
@@ -67,7 +64,7 @@ class ReportActivity : AppCompatActivity() {
     
     private suspend fun loadAttendanceData(): List<Attendance> {
         return try {
-            val storage = com.example.personalovertimerecord.data.AttendanceStorage(this)
+            val storage = com.example.personalovertimerecord.data.AttendanceStorage(this@ReportActivity)
             storage.getAllAttendance()
         } catch (e: Exception) {
             emptyList()
@@ -83,10 +80,6 @@ class ReportActivity : AppCompatActivity() {
     }
     
     private fun updateMonthlyOverview(attendanceList: List<Attendance>) {
-        val tvTotalDays = findViewById<TextView>(R.id.tvTotalDays)
-        val tvTotalHours = findViewById<TextView>(R.id.tvTotalHours)
-        val tvTotalPay = findViewById<TextView>(R.id.tvTotalPay)
-        
         val yearPrefix = "${currentYear}-"
         val yearRecords = attendanceList.filter { it.date.startsWith(yearPrefix) }
         
@@ -101,17 +94,12 @@ class ReportActivity : AppCompatActivity() {
         
         val uniqueDays = yearRecords.map { it.date }.distinct().size
         
-        tvTotalDays.text = "$uniqueDays 天"
-        tvTotalHours.text = OvertimeCalculator.formatHours(totalHours)
-        tvTotalPay.text = OvertimeCalculator.formatMoney(totalPay)
+        binding.tvTotalDays.text = "$uniqueDays 天"
+        binding.tvTotalHours.text = OvertimeCalculator.formatHours(totalHours)
+        binding.tvTotalPay.text = OvertimeCalculator.formatMoney(totalPay)
     }
     
     private fun updateSalaryOverview(attendanceList: List<Attendance>) {
-        val tvBaseSalary = findViewById<TextView>(R.id.tvBaseSalary)
-        val tvPerformance = findViewById<TextView>(R.id.tvPerformance)
-        val tvOvertimePay = findViewById<TextView>(R.id.tvOvertimePay)
-        val tvTotalSalary = findViewById<TextView>(R.id.tvTotalSalary)
-        
         val report = SalaryCalculator.calculateMonthlySalary(
             attendanceList,
             settings,
@@ -119,17 +107,15 @@ class ReportActivity : AppCompatActivity() {
             Calendar.getInstance().get(Calendar.MONTH) + 1
         )
         
-        tvBaseSalary.text = OvertimeCalculator.formatMoney(settings.baseSalary)
-        tvPerformance.text = OvertimeCalculator.formatMoney(report.performanceBonus)
-        tvOvertimePay.text = OvertimeCalculator.formatMoney(report.totalOvertimePay)
+        binding.tvBaseSalary.text = OvertimeCalculator.formatMoney(settings.baseSalary)
+        binding.tvPerformance.text = OvertimeCalculator.formatMoney(report.performanceBonus)
+        binding.tvOvertimePay.text = OvertimeCalculator.formatMoney(report.totalOvertimePay)
         
         val totalSalary = settings.baseSalary + report.performanceBonus + report.totalOvertimePay
-        tvTotalSalary.text = OvertimeCalculator.formatMoney(totalSalary)
+        binding.tvTotalSalary.text = OvertimeCalculator.formatMoney(totalSalary)
     }
     
     private fun setupBarChart(attendanceList: List<Attendance>) {
-        val barChart = findViewById<BarChart>(R.id.barChart)
-        
         val yearPrefix = "${currentYear}-"
         val yearRecords = attendanceList.filter { it.date.startsWith(yearPrefix) }
         
@@ -161,7 +147,7 @@ class ReportActivity : AppCompatActivity() {
             valueTextSize = 8f
         }
         
-        barChart.apply {
+        binding.barChart.apply {
             data = BarData(dataSet)
             description.isEnabled = false
             xAxis.valueFormatter = IndexAxisValueFormatter(monthData.map { it.first })
@@ -174,8 +160,6 @@ class ReportActivity : AppCompatActivity() {
     }
     
     private fun setupPieChart(attendanceList: List<Attendance>) {
-        val pieChart = findViewById<PieChart>(R.id.pieChart)
-        
         val yearPrefix = "${currentYear}-"
         val yearRecords = attendanceList.filter { it.date.startsWith(yearPrefix) }
         
@@ -184,13 +168,13 @@ class ReportActivity : AppCompatActivity() {
         var holidayHours = 0f
         
         yearRecords.forEach { record ->
-            val dayType = com.example.personalovertimerecord.utils.HolidayManager.getDayType(record.date)
+            val dayType = HolidayManager.getDayType(record.date)
             val hours = record.manualOvertimeHours.toFloat()
             
             when (dayType) {
-                com.example.personalovertimerecord.data.DayType.WORKDAY -> normalHours += hours
-                com.example.personalovertimerecord.data.DayType.WEEKEND -> weekendHours += hours
-                com.example.personalovertimerecord.data.DayType.HOLIDAY -> holidayHours += hours
+                DayType.WORKDAY -> normalHours += hours
+                DayType.WEEKEND -> weekendHours += hours
+                DayType.HOLIDAY -> holidayHours += hours
             }
         }
         
@@ -217,7 +201,7 @@ class ReportActivity : AppCompatActivity() {
                 valueTextColor = android.graphics.Color.WHITE
             }
             
-            pieChart.apply {
+            binding.pieChart.apply {
                 data = PieData(dataSet)
                 description.isEnabled = false
                 legend.isEnabled = true
@@ -227,8 +211,6 @@ class ReportActivity : AppCompatActivity() {
     }
     
     private fun setupLineChart(attendanceList: List<Attendance>) {
-        val lineChart = findViewById<LineChart>(R.id.lineChart)
-        
         val yearPrefix = "${currentYear}-"
         val yearRecords = attendanceList.filter { it.date.startsWith(yearPrefix) }
         
@@ -261,7 +243,7 @@ class ReportActivity : AppCompatActivity() {
             mode = LineDataSet.Mode.CUBIC_BEZIER
         }
         
-        lineChart.apply {
+        binding.lineChart.apply {
             data = LineData(dataSet)
             description.isEnabled = false
             xAxis.valueFormatter = IndexAxisValueFormatter(monthData.map { it.first })

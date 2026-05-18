@@ -10,6 +10,10 @@ class AttendanceStorage(context: Context) {
     private val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     private var nextId: Long = 1L
     
+    // 内存缓存，提升性能
+    private var cachedData: List<Attendance>? = null
+    private var isCacheDirty: Boolean = true
+    
     init {
         val allAttendance = getAllAttendance()
         if (allAttendance.isNotEmpty()) {
@@ -18,6 +22,10 @@ class AttendanceStorage(context: Context) {
     }
     
     fun getAllAttendance(): List<Attendance> {
+        if (!isCacheDirty && cachedData != null) {
+            return cachedData!!
+        }
+        
         val jsonString = prefs.getString(KEY_ATTENDANCE, "[]")
         val jsonArray = JSONArray(jsonString)
         val list = mutableListOf<Attendance>()
@@ -25,7 +33,10 @@ class AttendanceStorage(context: Context) {
         for (i in 0 until jsonArray.length()) {
             list.add(jsonToAttendance(jsonArray.getJSONObject(i)))
         }
-        return list.sortedByDescending { it.date }
+        
+        cachedData = list.sortedByDescending { it.date }
+        isCacheDirty = false
+        return cachedData!!
     }
     
     fun getAttendanceByDate(date: String): Attendance? {
@@ -71,6 +82,14 @@ class AttendanceStorage(context: Context) {
         val jsonArray = JSONArray()
         list.forEach { jsonArray.put(attendanceToJson(it)) }
         prefs.edit().putString(KEY_ATTENDANCE, jsonArray.toString()).apply()
+        
+        // 数据已变更，标记缓存为脏
+        invalidateCache()
+    }
+    
+    private fun invalidateCache() {
+        isCacheDirty = true
+        cachedData = null
     }
     
     private fun attendanceToJson(attendance: Attendance): JSONObject {

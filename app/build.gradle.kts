@@ -1,14 +1,15 @@
 plugins {
     id("com.android.application")
     id("com.google.gms.google-services")
+    id("com.google.devtools.ksp")
 }
 
 android {
     namespace = "com.example.personalovertimerecord"
-    compileSdk {
-        version = release(36) {
-            minorApiLevel = 1
-        }
+    compileSdk = 36
+    
+    buildFeatures {
+        viewBinding = true
     }
 
     defaultConfig {
@@ -54,7 +55,7 @@ afterEvaluate {
 fun renameApk(buildType: String) {
     val versionName = android.defaultConfig.versionName ?: "1.1"
     val newFileName = "GenerateAPK_${buildType}_$versionName.apk"
-    val outputDir = file("${project.buildDir}/outputs/apk/$buildType")
+    val outputDir = layout.buildDirectory.dir("outputs/apk/$buildType").get().asFile
     
     println("Looking for APK in: ${outputDir.absolutePath}")
     
@@ -65,7 +66,7 @@ fun renameApk(buildType: String) {
         
         if (apkFiles != null && apkFiles.isNotEmpty()) {
             apkFiles.forEach { apkFile ->
-                val newFile = file("${outputDir.path}/$newFileName")
+                val newFile = outputDir.resolve(newFileName)
                 println("Renaming: ${apkFile.name} -> $newFileName")
                 
                 if (newFile.exists()) {
@@ -99,6 +100,11 @@ dependencies {
 
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.0")
+    
+    // Room Database
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    ksp(libs.androidx.room.compiler)
     
     implementation(libs.mpchart)
     

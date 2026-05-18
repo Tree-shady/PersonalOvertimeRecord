@@ -50,10 +50,36 @@ class FirebaseSyncManager private constructor(private val context: Context) {
             
             _syncState.value = SyncState.Loading("正在登录...")
             val result = auth?.signInWithEmailAndPassword(email, password)?.await()
-            result?.user?.let {
+            val user = result?.user
+            if (user != null) {
+                // 登录后检查用户信息是否存在，不存在则创建
+                try {
+                    val profileDoc = db?.collection("users")
+                        ?.document(user.uid)
+                        ?.collection("profile")
+                        ?.document("info")
+                        ?.get()
+                        ?.await()
+                    
+                    if (profileDoc?.exists() != true) {
+                        // 用户信息不存在，创建一个
+                        val userData = hashMapOf(
+                            "email" to email,
+                            "userId" to user.uid,
+                            "createdAt" to com.google.firebase.Timestamp.now()
+                        )
+                        
+                        profileDoc?.reference?.set(userData)?.await()
+                        Log.d(TAG, "已为登录用户创建 Firestore 信息: ${user.uid}")
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "登录时处理用户信息失败", e)
+                }
+                
                 _syncState.value = SyncState.Success("登录成功")
-                Result.success(it)
-            } ?: Result.failure(Exception("登录失败"))
+                return@withContext Result.success(user)
+            }
+            Result.failure(Exception("登录失败"))
         } catch (e: Exception) {
             _syncState.value = SyncState.Error("登录失败: ${e.message}")
             Result.failure(e)
@@ -68,10 +94,34 @@ class FirebaseSyncManager private constructor(private val context: Context) {
             
             _syncState.value = SyncState.Loading("正在注册...")
             val result = auth?.createUserWithEmailAndPassword(email, password)?.await()
-            result?.user?.let {
+            val user = result?.user
+            if (user != null) {
+                // 在用户注册成功后，将用户信息写入 Firestore
+                try {
+                    val userData = hashMapOf(
+                        "email" to email,
+                        "userId" to user.uid,
+                        "createdAt" to com.google.firebase.Timestamp.now()
+                    )
+                    
+                    // 保存到 Firestore: users/{userId}/profile
+                    db?.collection("users")
+                        ?.document(user.uid)
+                        ?.collection("profile")
+                        ?.document("info")
+                        ?.set(userData)
+                        ?.await()
+                    
+                    Log.d(TAG, "用户信息已保存到 Firestore: ${user.uid}")
+                } catch (e: Exception) {
+                    Log.e(TAG, "保存用户信息到 Firestore 失败", e)
+                    // 即使 Firestore 写入失败，Auth 注册已经成功，我们继续
+                }
+                
                 _syncState.value = SyncState.Success("注册成功")
-                Result.success(it)
-            } ?: Result.failure(Exception("注册失败"))
+                return@withContext Result.success(user)
+            }
+            Result.failure(Exception("注册失败"))
         } catch (e: Exception) {
             _syncState.value = SyncState.Error("注册失败: ${e.message}")
             Result.failure(e)
