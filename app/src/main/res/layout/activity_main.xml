@@ -23,6 +23,26 @@
             app:titleTextColor="@color/white">
 
             <ImageButton
+                android:id="@+id/btnCloudSync"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_gravity="end|center_vertical"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/ic_cloud_sync"
+                app:tint="@color/white"
+                android:contentDescription="云同步" />
+
+            <ImageButton
+                android:id="@+id/btnReport"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_gravity="end|center_vertical"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/ic_chart"
+                app:tint="@color/white"
+                android:contentDescription="统计报表" />
+
+            <ImageButton
                 android:id="@+id/btnSettings"
                 android:layout_width="48dp"
                 android:layout_height="48dp"

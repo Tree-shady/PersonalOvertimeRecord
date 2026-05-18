@@ -197,6 +197,16 @@ class MainActivity : AppCompatActivity() {
         btnSettings.setOnClickListener {
             startActivity(Intent(this, SettingsActivity::class.java))
         }
+        
+        val btnReport = findViewById<ImageButton>(R.id.btnReport)
+        btnReport.setOnClickListener {
+            startActivity(Intent(this, ReportActivity::class.java))
+        }
+        
+        val btnCloudSync = findViewById<ImageButton>(R.id.btnCloudSync)
+        btnCloudSync.setOnClickListener {
+            startActivity(Intent(this, CloudSyncActivity::class.java))
+        }
     }
     
     private fun observeViewModel() {
