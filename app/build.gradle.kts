@@ -29,9 +29,56 @@ android {
             )
         }
     }
+    
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
+    }
+}
+
+afterEvaluate {
+    tasks.named("assembleRelease").configure {
+        doLast {
+            renameApk("release")
+        }
+    }
+    
+    tasks.named("assembleDebug").configure {
+        doLast {
+            renameApk("debug")
+        }
+    }
+}
+
+fun renameApk(buildType: String) {
+    val versionName = android.defaultConfig.versionName ?: "1.1"
+    val newFileName = "GenerateAPK_${buildType}_$versionName.apk"
+    val outputDir = file("${project.buildDir}/outputs/apk/$buildType")
+    
+    println("Looking for APK in: ${outputDir.absolutePath}")
+    
+    if (outputDir.exists() && outputDir.isDirectory) {
+        val apkFiles = outputDir.listFiles { file -> 
+            file.isFile && file.name.endsWith(".apk") && !file.name.startsWith("GenerateAPK") 
+        }
+        
+        if (apkFiles != null && apkFiles.isNotEmpty()) {
+            apkFiles.forEach { apkFile ->
+                val newFile = file("${outputDir.path}/$newFileName")
+                println("Renaming: ${apkFile.name} -> $newFileName")
+                
+                if (newFile.exists()) {
+                    newFile.delete()
+                }
+                
+                apkFile.renameTo(newFile)
+                println("Successfully renamed APK to: ${newFile.absolutePath}")
+            }
+        } else {
+            println("No APK files found in ${outputDir.absolutePath}")
+        }
+    } else {
+        println("Output directory does not exist: ${outputDir.absolutePath}")
     }
 }
 
