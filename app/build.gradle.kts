@@ -1,6 +1,7 @@
 plugins {
     id("com.android.application")
-    id("com.google.gms.google-services")
+    id("org.jetbrains.kotlin.android")
+    // id("com.google.gms.google-services") // 已禁用云同步
     id("com.google.devtools.ksp")
 }
 
@@ -35,6 +36,10 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
+    }
+    
+    kotlinOptions {
+        jvmTarget = "11"
     }
 }
 
@@ -85,17 +90,17 @@ fun renameApk(buildType: String) {
 }
 
 dependencies {
-    implementation("androidx.core:core-ktx:1.10.1")
+    implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.appcompat:appcompat:1.7.1")
-    implementation("com.google.android.material:material:1.14.0")
+    implementation("com.google.android.material:material:1.12.0")
     implementation("androidx.constraintlayout:constraintlayout:2.2.1")
-    implementation("androidx.activity:activity-ktx:1.13.0")
+    implementation("androidx.activity:activity-ktx:1.9.3")
     
     implementation("androidx.recyclerview:recyclerview:1.3.2")
     
-    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.2")
-    implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.8.2")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.2")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.6.2")
+    implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.6.2")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.6.2")
     implementation(libs.androidx.fragment)
 
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.0")
@@ -108,9 +113,9 @@ dependencies {
     
     implementation(libs.mpchart)
     
-    // Firebase dependencies (from libs.versions.toml)
-    implementation(libs.firebase.auth.ktx)
-    implementation(libs.firebase.firestore.ktx)
+    // Firebase dependencies - 已禁用云同步
+    // implementation(libs.firebase.auth.ktx)
+    // implementation(libs.firebase.firestore.ktx)
     
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")

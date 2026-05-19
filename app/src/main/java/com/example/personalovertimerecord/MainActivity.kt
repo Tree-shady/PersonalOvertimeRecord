@@ -4,6 +4,7 @@ import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.view.View
 import android.widget.Toast
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
@@ -123,10 +124,8 @@ class MainActivity : AppCompatActivity() {
                 if (existingAttendance != null) {
                     viewModel.updateAttendance(attendance)
                 } else {
-                    viewModel.insertAttendance(attendance)
+                    viewModel.addAttendance(attendance)
                 }
-            },
-            onDismiss = {
                 updateCalendarData()
             }
         )
@@ -176,8 +175,6 @@ class MainActivity : AppCompatActivity() {
                 existingAttendance = attendance,
                 onSaveAttendance = { updatedAttendance ->
                     viewModel.updateAttendance(updatedAttendance)
-                },
-                onDismiss = {
                     updateCalendarData()
                 }
             )
@@ -194,9 +191,8 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent(this, ReportActivity::class.java))
         }
         
-        binding.btnCloudSync.setOnClickListener {
-            startActivity(Intent(this, CloudSyncActivity::class.java))
-        }
+        // 云同步功能已禁用
+        binding.btnCloudSync.visibility = View.GONE
     }
     
     private fun observeViewModel() {
@@ -209,7 +205,7 @@ class MainActivity : AppCompatActivity() {
         viewModel.errorMessage.observe(this) { errorMsg ->
             if (!errorMsg.isNullOrEmpty()) {
                 Toast.makeText(this, errorMsg, Toast.LENGTH_LONG).show()
-                viewModel.clearErrorMessage()
+                viewModel.clearError()
             }
         }
     }

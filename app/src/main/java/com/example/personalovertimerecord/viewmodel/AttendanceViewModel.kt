@@ -27,8 +27,8 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
     private val repository: AttendanceRepository = OvertimeApplication.getAttendanceRepository()
     
     // LiveData版本的数据列表（通过Flow转换）
-    private val _allAttendance: LiveData<List<Attendance>>
-    val allAttendance: LiveData<List<Attendance>> = _allAttendance
+    private lateinit var _allAttendance: LiveData<List<Attendance>>
+    val allAttendance: LiveData<List<Attendance>> get() = _allAttendance
     
     // 错误消息
     private val _errorMessage = MutableLiveData<String?>()
@@ -49,18 +49,17 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
     }
     
     /**
-     * 手动刷新数据
-     * 虽然Flow会自动更新，但某些场景需要手动刷新
+     * 添加考勤记录
      */
-    fun refreshData() {
+    fun addAttendance(attendance: Attendance) {
         viewModelScope.launch {
             try {
                 _isLoading.value = true
-                // Flow会自动更新，这里可以添加额外逻辑
-                Log.d(TAG, "Data refresh triggered")
+                repository.insertAttendance(attendance)
+                Log.d(TAG, "Attendance added: ${attendance.date}")
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to refresh data", e)
-                _errorMessage.value = "刷新数据失败: ${e.message}"
+                Log.e(TAG, "Error adding attendance", e)
+                _errorMessage.value = "添加记录失败: ${e.message}"
             } finally {
                 _isLoading.value = false
             }
@@ -68,69 +67,62 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
     }
     
     /**
-     * 更新记录
+     * 更新考勤记录
      */
     fun updateAttendance(attendance: Attendance) {
         viewModelScope.launch {
             try {
+                _isLoading.value = true
                 repository.updateAttendance(attendance)
-                Log.d(TAG, "Attendance updated: ${attendance.id}")
+                Log.d(TAG, "Attendance updated: ${attendance.date}")
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to update attendance", e)
+                Log.e(TAG, "Error updating attendance", e)
                 _errorMessage.value = "更新记录失败: ${e.message}"
+            } finally {
+                _isLoading.value = false
             }
         }
     }
     
     /**
-     * 插入新记录
+     * 删除考勤记录
      */
-    fun insertAttendance(attendance: Attendance) {
+    fun deleteAttendance(attendance: Attendance) {
         viewModelScope.launch {
             try {
-                val id = repository.insertAttendance(attendance)
-                Log.d(TAG, "Attendance inserted with ID: $id")
+                _isLoading.value = true
+                repository.deleteAttendance(attendance.id)
+                Log.d(TAG, "Attendance deleted: ${attendance.date}")
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to insert attendance", e)
-                _errorMessage.value = "添加记录失败: ${e.message}"
-            }
-        }
-    }
-    
-    /**
-     * 保存记录（插入或更新）
-     */
-    fun saveAttendance(attendance: Attendance) {
-        viewModelScope.launch {
-            try {
-                val id = repository.saveAttendance(attendance)
-                Log.d(TAG, "Attendance saved with ID: $id")
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to save attendance", e)
-                _errorMessage.value = "保存记录失败: ${e.message}"
-            }
-        }
-    }
-    
-    /**
-     * 删除记录
-     */
-    fun deleteAttendance(id: Long) {
-        viewModelScope.launch {
-            try {
-                repository.deleteAttendance(id)
-                Log.d(TAG, "Attendance deleted: $id")
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to delete attendance", e)
+                Log.e(TAG, "Error deleting attendance", e)
                 _errorMessage.value = "删除记录失败: ${e.message}"
+            } finally {
+                _isLoading.value = false
             }
         }
+    }
+    
+    /**
+     * 按日期获取考勤记录
+     */
+    fun getAttendanceByDate(date: String): LiveData<Attendance?> {
+        val result = MutableLiveData<Attendance?>()
+        viewModelScope.launch {
+            try {
+                val attendance = repository.getAttendanceByDate(date)
+                result.postValue(attendance)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error getting attendance by date", e)
+                result.postValue(null)
+            }
+        }
+        return result
     }
     
     /**
      * 清除错误消息
      */
-    fun clearErrorMessage() {
+    fun clearError() {
         _errorMessage.value = null
     }
 }
