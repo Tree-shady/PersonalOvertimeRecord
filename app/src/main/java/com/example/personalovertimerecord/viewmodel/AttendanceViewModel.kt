@@ -23,23 +23,18 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
         private const val TAG = "AttendanceViewModel"
     }
     
-    // 使用Application获取Repository单例
     private val repository: AttendanceRepository = OvertimeApplication.getAttendanceRepository()
     
-    // LiveData版本的数据列表（通过Flow转换）
     private lateinit var _allAttendance: LiveData<List<Attendance>>
     val allAttendance: LiveData<List<Attendance>> get() = _allAttendance
     
-    // 错误消息
     private val _errorMessage = MutableLiveData<String?>()
     val errorMessage: LiveData<String?> = _errorMessage
     
-    // 加载状态
     private val _isLoading = MutableLiveData(false)
     val isLoading: LiveData<Boolean> = _isLoading
     
     init {
-        // 将Flow转换为LiveData
         _allAttendance = repository.getAllAttendanceFlow()
             .catch { e ->
                 Log.e(TAG, "Error loading attendance data", e)
@@ -48,9 +43,6 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
             .asLiveData()
     }
     
-    /**
-     * 添加考勤记录
-     */
     fun addAttendance(attendance: Attendance) {
         viewModelScope.launch {
             try {
@@ -66,9 +58,6 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
     
-    /**
-     * 更新考勤记录
-     */
     fun updateAttendance(attendance: Attendance) {
         viewModelScope.launch {
             try {
@@ -84,9 +73,6 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
     
-    /**
-     * 删除考勤记录
-     */
     fun deleteAttendance(attendance: Attendance) {
         viewModelScope.launch {
             try {
@@ -103,25 +89,19 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
     }
     
     /**
-     * 按日期获取考勤记录
+     * 获取指定日期的考勤记录
+     * 使用 Flow 异步获取，避免在协程中使用 MutableLiveData
      */
-    fun getAttendanceByDate(date: String): LiveData<Attendance?> {
-        val result = MutableLiveData<Attendance?>()
-        viewModelScope.launch {
-            try {
-                val attendance = repository.getAttendanceByDate(date)
-                result.postValue(attendance)
-            } catch (e: Exception) {
-                Log.e(TAG, "Error getting attendance by date", e)
-                result.postValue(null)
-            }
+    suspend fun getAttendanceByDate(date: String): Attendance? {
+        return try {
+            repository.getAttendanceByDate(date)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting attendance by date", e)
+            _errorMessage.postValue("获取记录失败: ${e.message}")
+            null
         }
-        return result
     }
     
-    /**
-     * 清除错误消息
-     */
     fun clearError() {
         _errorMessage.value = null
     }

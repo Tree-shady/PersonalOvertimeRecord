@@ -4,7 +4,8 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#F0F4F8"
-    android:fillViewport="true">
+    android:fillViewport="true"
+    android:fitsSystemWindows="true">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -16,7 +17,8 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:background="@color/white"
-            app:elevation="4dp">
+            app:elevation="4dp"
+            android:fitsSystemWindows="true">
 
             <androidx.appcompat.widget.Toolbar
                 android:id="@+id/toolbar"
@@ -52,89 +54,96 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
+            android:orientation="vertical"
             android:paddingHorizontal="8dp">
 
-            <!-- Total Days Card -->
-            <androidx.cardview.widget.CardView
-                android:layout_width="0dp"
+            <!-- First Row: Days + Hours -->
+            <LinearLayout
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:layout_margin="8dp"
-                app:cardCornerRadius="12dp"
-                app:cardElevation="4dp">
+                android:orientation="horizontal">
 
-                <LinearLayout
-                    android:layout_width="match_parent"
+                <!-- Total Days Card -->
+                <androidx.cardview.widget.CardView
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="16dp"
-                    android:gravity="center">
+                    android:layout_weight="1"
+                    android:layout_margin="6dp"
+                    app:cardCornerRadius="12dp"
+                    app:cardElevation="4dp">
 
-                    <TextView
-                        android:layout_width="wrap_content"
+                    <LinearLayout
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="加班天数"
-                        android:textSize="12sp"
-                        android:textColor="#666666" />
+                        android:orientation="vertical"
+                        android:padding="16dp"
+                        android:gravity="center">
 
-                    <TextView
-                        android:id="@+id/tvTotalDays"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="0 天"
-                        android:textSize="24sp"
-                        android:textStyle="bold"
-                        android:textColor="@color/colorPrimary"
-                        android:layout_marginTop="4dp" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="加班天数"
+                            android:textSize="12sp"
+                            android:textColor="#666666" />
 
-                </LinearLayout>
+                        <TextView
+                            android:id="@+id/tvTotalDays"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="0 天"
+                            android:textSize="28sp"
+                            android:textStyle="bold"
+                            android:textColor="@color/colorPrimary"
+                            android:layout_marginTop="4dp" />
 
-            </androidx.cardview.widget.CardView>
+                    </LinearLayout>
 
-            <!-- Total Hours Card -->
-            <androidx.cardview.widget.CardView
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:layout_margin="8dp"
-                app:cardCornerRadius="12dp"
-                app:cardElevation="4dp">
+                </androidx.cardview.widget.CardView>
 
-                <LinearLayout
-                    android:layout_width="match_parent"
+                <!-- Total Hours Card -->
+                <androidx.cardview.widget.CardView
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="16dp"
-                    android:gravity="center">
+                    android:layout_weight="1"
+                    android:layout_margin="6dp"
+                    app:cardCornerRadius="12dp"
+                    app:cardElevation="4dp">
 
-                    <TextView
-                        android:layout_width="wrap_content"
+                    <LinearLayout
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="总时长"
-                        android:textSize="12sp"
-                        android:textColor="#666666" />
+                        android:orientation="vertical"
+                        android:padding="16dp"
+                        android:gravity="center">
 
-                    <TextView
-                        android:id="@+id/tvTotalHours"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="0小时"
-                        android:textSize="24sp"
-                        android:textStyle="bold"
-                        android:textColor="#4CAF50"
-                        android:layout_marginTop="4dp" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="总时长"
+                            android:textSize="12sp"
+                            android:textColor="#666666" />
 
-                </LinearLayout>
+                        <TextView
+                            android:id="@+id/tvTotalHours"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="0小时"
+                            android:textSize="28sp"
+                            android:textStyle="bold"
+                            android:textColor="#4CAF50"
+                            android:layout_marginTop="4dp" />
 
-            </androidx.cardview.widget.CardView>
+                    </LinearLayout>
 
-            <!-- Total Pay Card -->
+                </androidx.cardview.widget.CardView>
+
+            </LinearLayout>
+
+            <!-- Second Row: Pay -->
             <androidx.cardview.widget.CardView
-                android:layout_width="0dp"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:layout_margin="8dp"
+                android:layout_margin="6dp"
                 app:cardCornerRadius="12dp"
                 app:cardElevation="4dp">
 
@@ -149,18 +158,19 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="加班工资"
-                        android:textSize="12sp"
+                        android:textSize="14sp"
                         android:textColor="#666666" />
 
                     <TextView
                         android:id="@+id/tvTotalPay"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="¥0"
-                        android:textSize="24sp"
+                        android:text="¥0.00"
+                        android:textSize="32sp"
                         android:textStyle="bold"
                         android:textColor="#FF9800"
-                        android:layout_marginTop="4dp" />
+                        android:layout_marginTop="4dp"
+                        android:ellipsize="none" />
 
                 </LinearLayout>
 

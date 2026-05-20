@@ -8,6 +8,7 @@ import android.view.View
 import android.widget.Toast
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.personalovertimerecord.adapter.AttendanceAdapter
 import com.example.personalovertimerecord.data.Attendance
@@ -16,32 +17,28 @@ import com.example.personalovertimerecord.data.SettingsManager
 import com.example.personalovertimerecord.databinding.ActivityMainBinding
 import com.example.personalovertimerecord.dialog.AddOvertimeDialog
 import com.example.personalovertimerecord.utils.DateUtils
+import com.example.personalovertimerecord.utils.Formatter
 import com.example.personalovertimerecord.utils.OvertimeCalculator
 import com.example.personalovertimerecord.view.CalendarView
 import com.example.personalovertimerecord.viewmodel.AttendanceViewModel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.util.Calendar
 import java.util.Date
 
 class MainActivity : AppCompatActivity() {
     
     companion object {
-        private const val TIME_UPDATE_INTERVAL = 1000L  // 1 second
+        private const val TIME_UPDATE_INTERVAL = 1000L
     }
     
     private val viewModel: AttendanceViewModel by viewModels()
     private lateinit var binding: ActivityMainBinding
     private lateinit var adapter: AttendanceAdapter
     private lateinit var settingsManager: SettingsManager
-    private var currentSettings: OvertimeSettings = OvertimeSettings()
-    private val handler = Handler(Looper.getMainLooper())
-    private val updateTimeRunnable = object : Runnable {
-        override fun run() {
-            updateCurrentTime()
-            handler.postDelayed(this, TIME_UPDATE_INTERVAL)
-        }
-    }
-    
     private lateinit var calendarView: CalendarView
+    private var currentSettings: OvertimeSettings = OvertimeSettings()
+    
     private var currentYear: Int = Calendar.getInstance().get(Calendar.YEAR)
     private var currentMonth: Int = Calendar.getInstance().get(Calendar.MONTH)
     
@@ -63,7 +60,7 @@ class MainActivity : AppCompatActivity() {
     
     override fun onResume() {
         super.onResume()
-        handler.post(updateTimeRunnable)
+        startTimeUpdates()
         currentSettings = settingsManager.getSettings()
         adapter.setSettingsManager(settingsManager)
         viewModel.allAttendance.value?.let { attendanceList ->
@@ -73,7 +70,29 @@ class MainActivity : AppCompatActivity() {
     
     override fun onPause() {
         super.onPause()
-        handler.removeCallbacks(updateTimeRunnable)
+        stopTimeUpdates()
+    }
+    
+    private var timeUpdateJob: kotlinx.coroutines.Job? = null
+    
+    private fun startTimeUpdates() {
+        timeUpdateJob?.cancel()
+        timeUpdateJob = lifecycleScope.launch {
+            while (true) {
+                updateCurrentTime()
+                delay(TIME_UPDATE_INTERVAL)
+            }
+        }
+    }
+    
+    private fun stopTimeUpdates() {
+        timeUpdateJob?.cancel()
+        timeUpdateJob = null
+    }
+    
+    override fun onDestroy() {
+        super.onDestroy()
+        stopTimeUpdates()
     }
     
     private fun setupCalendar() {
@@ -82,25 +101,11 @@ class MainActivity : AppCompatActivity() {
         updateMonthYearText()
         
         binding.btnPrevMonth.setOnClickListener {
-            if (currentMonth == 0) {
-                currentMonth = 11
-                currentYear--
-            } else {
-                currentMonth--
-            }
-            updateMonthYearText()
-            updateCalendarData()
+            changeMonth(-1)
         }
         
         binding.btnNextMonth.setOnClickListener {
-            if (currentMonth == 11) {
-                currentMonth = 0
-                currentYear++
-            } else {
-                currentMonth++
-            }
-            updateMonthYearText()
-            updateCalendarData()
+            changeMonth(1)
         }
         
         calendarView.setOnDateClickListener(object : CalendarView.OnDateClickListener {
@@ -108,6 +113,22 @@ class MainActivity : AppCompatActivity() {
                 showAddOvertimeDialog(year, month, day)
             }
         })
+    }
+    
+    private fun changeMonth(delta: Int) {
+        currentMonth += delta
+        when {
+            currentMonth < 0 -> {
+                currentMonth = 11
+                currentYear--
+            }
+            currentMonth > 11 -> {
+                currentMonth = 0
+                currentYear++
+            }
+        }
+        updateMonthYearText()
+        updateCalendarData()
     }
     
     private fun showAddOvertimeDialog(year: Int, month: Int, day: Int) {
@@ -125,6 +146,12 @@ class MainActivity : AppCompatActivity() {
                     viewModel.updateAttendance(attendance)
                 } else {
                     viewModel.addAttendance(attendance)
+                }
+                updateCalendarData()
+            },
+            onDeleteAttendance = { id ->
+                viewModel.allAttendance.value?.find { it.id == id }?.let {
+                    viewModel.deleteAttendance(it)
                 }
                 updateCalendarData()
             }
@@ -154,9 +181,9 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun setupRecyclerView() {
-        adapter = AttendanceAdapter { attendance ->
-            showEditDialog(attendance)
-        }
+        adapter = AttendanceAdapter(
+            onItemClick = { attendance -> showEditDialog(attendance) }
+        )
         adapter.setSettingsManager(settingsManager)
         binding.recyclerView.adapter = adapter
         binding.recyclerView.layoutManager = LinearLayoutManager(this)
@@ -176,6 +203,12 @@ class MainActivity : AppCompatActivity() {
                 onSaveAttendance = { updatedAttendance ->
                     viewModel.updateAttendance(updatedAttendance)
                     updateCalendarData()
+                },
+                onDeleteAttendance = { id ->
+                    viewModel.allAttendance.value?.find { it.id == id }?.let {
+                        viewModel.deleteAttendance(it)
+                    }
+                    updateCalendarData()
                 }
             )
             dialog.show()
@@ -191,7 +224,6 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent(this, ReportActivity::class.java))
         }
         
-        // 云同步功能已禁用
         binding.btnCloudSync.visibility = View.GONE
     }
     
@@ -223,7 +255,7 @@ class MainActivity : AppCompatActivity() {
         val performanceBonus = currentSettings.baseSalary * (currentSettings.performancePercent / 100.0)
         val totalPay = currentSettings.baseSalary + performanceBonus + totalOvertimePay
         
-        binding.tvTotalOvertime.text = OvertimeCalculator.formatHours(totalHours)
-        binding.tvTotalPay.text = OvertimeCalculator.formatMoney(totalPay)
+        binding.tvTotalOvertime.text = Formatter.formatHours(totalHours)
+        binding.tvTotalPay.text = Formatter.formatMoney(totalPay)
     }
 }

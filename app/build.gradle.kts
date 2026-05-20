@@ -43,51 +43,52 @@ android {
     }
 }
 
-afterEvaluate {
-    tasks.named("assembleRelease").configure {
-        doLast {
-            renameApk("release")
-        }
-    }
-    
-    tasks.named("assembleDebug").configure {
-        doLast {
-            renameApk("debug")
-        }
-    }
-}
+// APK 重命名功能已禁用，让 Android Studio 能正确部署
+// afterEvaluate {
+//     tasks.named("assembleRelease").configure {
+//         doLast {
+//             renameApk("release")
+//         }
+//     }
+//     
+//     tasks.named("assembleDebug").configure {
+//         doLast {
+//             renameApk("debug")
+//         }
+//     }
+// }
 
-fun renameApk(buildType: String) {
-    val versionName = android.defaultConfig.versionName ?: "1.1"
-    val newFileName = "GenerateAPK_${buildType}_$versionName.apk"
-    val outputDir = layout.buildDirectory.dir("outputs/apk/$buildType").get().asFile
-    
-    println("Looking for APK in: ${outputDir.absolutePath}")
-    
-    if (outputDir.exists() && outputDir.isDirectory) {
-        val apkFiles = outputDir.listFiles { file -> 
-            file.isFile && file.name.endsWith(".apk") && !file.name.startsWith("GenerateAPK") 
-        }
-        
-        if (apkFiles != null && apkFiles.isNotEmpty()) {
-            apkFiles.forEach { apkFile ->
-                val newFile = outputDir.resolve(newFileName)
-                println("Renaming: ${apkFile.name} -> $newFileName")
-                
-                if (newFile.exists()) {
-                    newFile.delete()
-                }
-                
-                apkFile.renameTo(newFile)
-                println("Successfully renamed APK to: ${newFile.absolutePath}")
-            }
-        } else {
-            println("No APK files found in ${outputDir.absolutePath}")
-        }
-    } else {
-        println("Output directory does not exist: ${outputDir.absolutePath}")
-    }
-}
+// fun renameApk(buildType: String) {
+//     val versionName = android.defaultConfig.versionName ?: "1.1"
+//     val newFileName = "GenerateAPK_${buildType}_$versionName.apk"
+//     val outputDir = layout.buildDirectory.dir("outputs/apk/$buildType").get().asFile
+//     
+//     println("Looking for APK in: ${outputDir.absolutePath}")
+//     
+//     if (outputDir.exists() && outputDir.isDirectory) {
+//         val apkFiles = outputDir.listFiles { file -> 
+//             file.isFile && file.name.endsWith(".apk") && !file.name.startsWith("GenerateAPK") 
+//         }
+//         
+//         if (apkFiles != null && apkFiles.isNotEmpty()) {
+//             apkFiles.forEach { apkFile ->
+//                 val newFile = outputDir.resolve(newFileName)
+//                 println("Renaming: ${apkFile.name} -> $newFileName")
+//                 
+//                 if (newFile.exists()) {
+//                     newFile.delete()
+//                 }
+//                 
+//                 apkFile.renameTo(newFile)
+//                 println("Successfully renamed APK to: ${newFile.absolutePath}")
+//             }
+//         } else {
+//             println("No APK files found in ${outputDir.absolutePath}")
+//         }
+//     } else {
+//         println("Output directory does not exist: ${outputDir.absolutePath}")
+//     }
+// }
 
 dependencies {
     implementation("androidx.core:core-ktx:1.13.1")

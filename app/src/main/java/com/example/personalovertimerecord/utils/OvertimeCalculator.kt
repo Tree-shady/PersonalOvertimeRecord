@@ -4,7 +4,6 @@ import com.example.personalovertimerecord.data.Attendance
 import com.example.personalovertimerecord.data.OvertimeRecord
 import com.example.personalovertimerecord.data.OvertimeResult
 import com.example.personalovertimerecord.data.OvertimeSettings
-import java.util.Locale
 
 object OvertimeCalculator {
     
@@ -109,18 +108,5 @@ object OvertimeCalculator {
         val extraPay = extraHours * hourlyWage * settings.overtimeRateNormal
         
         return normalPay + weekendPay + holidayPay + extraPay
-    }
-    
-    fun formatHours(hours: Double): String {
-        val fullHours = hours.toInt()
-        val minutes = ((hours - fullHours) * 60).toInt()
-        if (minutes > 0) {
-            return "${fullHours}小时${minutes}分钟"
-        }
-        return "${fullHours}小时"
-    }
-    
-    fun formatMoney(amount: Double): String {
-        return String.format(Locale.getDefault(), "¥%.2f", amount)
     }
 }

@@ -23,13 +23,15 @@ class AddOvertimeDialog(
     private val existingRecord: OvertimeRecord? = null,
     private val existingAttendance: Attendance? = null,
     private val onSaveOvertimeRecord: ((OvertimeRecord) -> Unit)? = null,
-    private val onSaveAttendance: ((Attendance) -> Unit)? = null
+    private val onSaveAttendance: ((Attendance) -> Unit)? = null,
+    private val onDeleteAttendance: ((Long) -> Unit)? = null
 ) : Dialog(context) {
     
     private lateinit var etOvertimeHours: EditText
     private lateinit var etExtraHours: EditText
     private lateinit var etNote: EditText
     private lateinit var tvTitle: TextView
+    private lateinit var btnDelete: View
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -50,6 +52,7 @@ class AddOvertimeDialog(
         etExtraHours = findViewById(R.id.etExtraHours)
         etNote = findViewById(R.id.etNote)
         tvTitle = findViewById(R.id.tvTitle)
+        btnDelete = findViewById(R.id.btnDelete)
         
         val tvDate = findViewById<TextView>(R.id.tvDate)
         val dateStr = String.format(Locale.getDefault(), "%d-%02d-%02d", year, month + 1, day)
@@ -71,12 +74,20 @@ class AddOvertimeDialog(
                 etExtraHours.setText(existingAttendance.manualExtraHours.toString())
             }
             etNote.setText(existingAttendance.note ?: "")
+            btnDelete.visibility = View.VISIBLE
         } else {
             tvTitle.text = "添加加班记录"
         }
     }
     
     private fun setupListeners() {
+        btnDelete.setOnClickListener {
+            if (existingAttendance != null && onDeleteAttendance != null) {
+                onDeleteAttendance.invoke(existingAttendance.id)
+                dismiss()
+            }
+        }
+        
         findViewById<View>(R.id.btnCancel).setOnClickListener {
             dismiss()
         }

@@ -3,17 +3,16 @@ package com.example.personalovertimerecord.view
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
+import android.graphics.RectF
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
+import androidx.core.content.ContextCompat
+import com.example.personalovertimerecord.R
 import com.example.personalovertimerecord.data.Attendance
-import com.example.personalovertimerecord.data.OvertimeRecord
 import com.example.personalovertimerecord.data.OvertimeSettings
 import com.example.personalovertimerecord.data.SettingsManager
-import com.example.personalovertimerecord.utils.HolidayManager
-import com.example.personalovertimerecord.utils.OvertimeCalculator
 import java.util.Calendar
-import java.util.Locale
 
 class CalendarView @JvmOverloads constructor(
     context: Context,
@@ -21,226 +20,222 @@ class CalendarView @JvmOverloads constructor(
     defStyleAttr: Int = 0
 ) : View(context, attrs, defStyleAttr) {
     
-    private val calendar = Calendar.getInstance()
-    private var selectedDay: Int = calendar.get(Calendar.DAY_OF_MONTH)
-    private var currentMonth: Int = calendar.get(Calendar.MONTH)
-    private var currentYear: Int = calendar.get(Calendar.YEAR)
-    
-    private var attendanceData: Map<String, Attendance> = emptyMap()
-    private var overtimeRecordData: Map<String, OvertimeRecord> = emptyMap()
-    private lateinit var settingsManager: SettingsManager
-    private var settings: OvertimeSettings = OvertimeSettings()
-    
-    private var onDateClickListener: OnDateClickListener? = null
-    
-    private val weekdayLabels = arrayOf("日", "一", "二", "三", "四", "五", "六")
-    
-    // 绘制缓存
-    private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        textSize = 36f
-        textAlign = Paint.Align.CENTER
-    }
-    
-    private val weekdayPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        textSize = 32f
-        textAlign = Paint.Align.CENTER
-        color = 0xFF666666.toInt()
-    }
-    
-    private val selectedPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0xFF6200EE.toInt()
-        style = Paint.Style.FILL
-    }
-    
-    private val overtimePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0xFF4CAF50.toInt()
-        textSize = 24f
-        textAlign = Paint.Align.CENTER
-    }
-    
-    private val extraPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0xFF9C27B0.toInt()
-        textSize = 24f
-        textAlign = Paint.Align.CENTER
-    }
-    
-    private val moneyPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0xFFFF9800.toInt()
-        textSize = 20f
-        textAlign = Paint.Align.CENTER
-    }
-    
-    private val todayPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0xFF6200EE.toInt()
-        style = Paint.Style.STROKE
-        strokeWidth = 4f
-    }
-    
-    // 预计算的显示数据缓存
-    private data class DayDisplayData(
-        val overtimeHours: Double = 0.0,
-        val extraHours: Double = 0.0,
-        val pay: Double = 0.0
-    )
-    
-    private var displayCache: Map<String, DayDisplayData> = emptyMap()
-    
     interface OnDateClickListener {
         fun onDateClick(year: Int, month: Int, day: Int)
     }
     
-    fun setOnDateClickListener(listener: OnDateClickListener) {
-        onDateClickListener = listener
+    private var listener: OnDateClickListener? = null
+    private var currentYear: Int = 0
+    private var currentMonth: Int = 0
+    
+    private var attendanceData: Map<String, Attendance> = emptyMap()
+    private var settingsManager: SettingsManager? = null
+    
+    private val calendar = Calendar.getInstance()
+    private var daysInMonth: Int = 0
+    private var firstDayOfWeek: Int = 0
+    
+    private val cellWidth: Float
+        get() = width.toFloat() / 7
+    
+    private val cellHeight: Float
+        get() = height.toFloat() / 8
+    
+    // Paint objects - 一次性创建，避免重复创建
+    private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        textSize = 36f
+        textAlign = Paint.Align.CENTER
+        color = ContextCompat.getColor(context, android.R.color.black)
+    }
+    
+    private val headerTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        textSize = 40f
+        textAlign = Paint.Align.CENTER
+        color = ContextCompat.getColor(context, android.R.color.black)
+        isFakeBoldText = true
+    }
+    
+    private val normalDayPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        textSize = 36f
+        textAlign = Paint.Align.CENTER
+        color = ContextCompat.getColor(context, android.R.color.black)
+    }
+    
+    private val overtimeDayPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        textSize = 36f
+        textAlign = Paint.Align.CENTER
+        color = ContextCompat.getColor(context, R.color.overtime_color)
+    }
+    
+    private val weekendDayPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        textSize = 36f
+        textAlign = Paint.Align.CENTER
+        color = ContextCompat.getColor(context, android.R.color.darker_gray)
+    }
+    
+    private val circlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        color = ContextCompat.getColor(context, R.color.overtime_color)
+        alpha = 50
+    }
+    
+    private val smallTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        textSize = 20f
+        textAlign = Paint.Align.CENTER
+        color = ContextCompat.getColor(context, android.R.color.darker_gray)
+    }
+    
+    private val overtimeTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        textSize = 18f
+        textAlign = Paint.Align.CENTER
+        color = ContextCompat.getColor(context, R.color.overtime_color)
+    }
+    
+    private val headerRect = RectF()
+    private val dayRect = RectF()
+    
+    private val weekDays = arrayOf("日", "一", "二", "三", "四", "五", "六")
+    
+    private var lastClickedDay: Int = -1
+    private var lastClickTime: Long = 0
+    
+    init {
+        val now = Calendar.getInstance()
+        currentYear = now.get(Calendar.YEAR)
+        currentMonth = now.get(Calendar.MONTH)
+        calculateDays()
     }
     
     fun setMonth(year: Int, month: Int) {
         currentYear = year
         currentMonth = month
-        selectedDay = 1
+        calculateDays()
         invalidate()
     }
     
-    fun setCheckInDates(dates: Set<Int>) {
-        // 这个方法保留用于向后兼容
-        invalidate()
-    }
-    
-    fun setCheckOutDates(dates: Set<Int>) {
-        // 这个方法保留用于向后兼容
-        invalidate()
+    fun setOnDateClickListener(listener: OnDateClickListener) {
+        this.listener = listener
     }
     
     fun setAttendanceData(data: List<Attendance>, manager: SettingsManager) {
-        settingsManager = manager
-        settings = settingsManager.getSettings()
+        this.settingsManager = manager
         attendanceData = data.associateBy { it.date }
-        overtimeRecordData = emptyMap()
-        updateDisplayCache()
         invalidate()
     }
     
-    fun setOvertimeRecordData(data: List<OvertimeRecord>, manager: SettingsManager) {
-        settingsManager = manager
-        settings = settingsManager.getSettings()
-        overtimeRecordData = data.associateBy { it.date }
-        attendanceData = emptyMap()
-        updateDisplayCache()
-        invalidate()
-    }
-    
-    private fun updateDisplayCache() {
-        val newCache = mutableMapOf<String, DayDisplayData>()
-        
-        attendanceData.forEach { (date, attendance) ->
-            val result = OvertimeCalculator.calculateOvertime(attendance, settings)
-            newCache[date] = DayDisplayData(
-                overtimeHours = result.overtimeHours,
-                extraHours = result.extraHours,
-                pay = result.estimatedPay
-            )
-        }
-        
-        overtimeRecordData.forEach { (date, record) ->
-            val result = OvertimeCalculator.calculateOvertime(record, settings)
-            newCache[date] = DayDisplayData(
-                overtimeHours = result.overtimeHours,
-                extraHours = result.extraHours,
-                pay = result.estimatedPay
-            )
-        }
-        
-        displayCache = newCache
-    }
-    
-    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val width = MeasureSpec.getSize(widthMeasureSpec)
-        val cellSize = width / 7
-        val rows = 7
-        setMeasuredDimension(width, cellSize * rows)
+    private fun calculateDays() {
+        calendar.set(currentYear, currentMonth, 1)
+        daysInMonth = calendar.getActualMaximum(Calendar.DAY_OF_MONTH)
+        firstDayOfWeek = calendar.get(Calendar.DAY_OF_WEEK) - 1
     }
     
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         
-        val width = width
-        val cellWidth = width / 7f
-        val cellHeight = height / 7f
-        
-        // 绘制星期标签
-        for (i in weekdayLabels.indices) {
-            canvas.drawText(
-                weekdayLabels[i],
-                cellWidth * i + cellWidth / 2,
-                cellHeight / 2 + 10,
-                weekdayPaint
-            )
+        drawWeekDayHeaders(canvas)
+        drawDays(canvas)
+    }
+    
+    private fun drawWeekDayHeaders(canvas: Canvas) {
+        for (i in 0 until 7) {
+            val x = cellWidth * i + cellWidth / 2
+            val y = cellHeight / 2 + headerTextPaint.textSize / 3
+            canvas.drawText(weekDays[i], x, y, headerTextPaint)
         }
-        
-        val tempCalendar = Calendar.getInstance()
-        tempCalendar.set(currentYear, currentMonth, 1)
-        val firstDayOfWeek = tempCalendar.get(Calendar.DAY_OF_WEEK) - 1
-        val daysInMonth = tempCalendar.getActualMaximum(Calendar.DAY_OF_MONTH)
-        
+    }
+    
+    private fun drawDays(canvas: Canvas) {
         for (day in 1..daysInMonth) {
             val position = firstDayOfWeek + day - 1
-            val row = position / 7 + 1
+            val row = position / 7
             val col = position % 7
             
-            val centerX = cellWidth * col + cellWidth / 2
-            val centerY = cellHeight * row + cellHeight / 2
-            val radius = minOf(cellWidth, cellHeight) * 0.25f
+            val left = col * cellWidth
+            val top = cellHeight + row * cellHeight
+            val right = left + cellWidth
+            val bottom = top + cellHeight
             
-            // 日期字符串（预格式化）
-            val dateStr = String.format(Locale.getDefault(), "%d-%02d-%02d", currentYear, currentMonth + 1, day)
+            val centerX = left + cellWidth / 2
+            val centerY = top + cellHeight / 2
             
-            // 绘制选中背景
-            if (day == selectedDay) {
-                canvas.drawCircle(centerX, centerY - 10, radius + 5, selectedPaint)
-                textPaint.color = 0xFFFFFFFF.toInt()
-            } else if (day == calendar.get(Calendar.DAY_OF_MONTH) &&
-                       currentMonth == calendar.get(Calendar.MONTH) &&
-                       currentYear == calendar.get(Calendar.YEAR)) {
-                canvas.drawCircle(centerX, centerY - 10, radius, todayPaint)
-                textPaint.color = 0xFF6200EE.toInt()
-            } else {
-                textPaint.color = 0xFF333333.toInt()
+            val dateStr = String.format("%d-%02d-%02d", currentYear, currentMonth + 1, day)
+            val attendance = attendanceData[dateStr]
+            
+            // 绘制背景圆
+            if (attendance != null) {
+                val radius = minOf(cellWidth, cellHeight) / 2 - 4
+                dayRect.set(left + 4, top + 4, right - 4, bottom - 4)
+                canvas.drawRoundRect(dayRect, radius, radius, circlePaint)
             }
             
-            // 绘制日期
+            // 选择绘制颜色
+            val paint = when {
+                attendance != null -> overtimeDayPaint
+                col == 0 || col == 6 -> weekendDayPaint
+                else -> normalDayPaint
+            }
+            
+            // 绘制日期文字
             canvas.drawText(
                 day.toString(),
                 centerX,
-                centerY - 10 + 12,
-                textPaint
+                centerY - cellHeight / 6,
+                paint
             )
             
-            // 从缓存获取显示数据
-            val displayData = displayCache[dateStr]
-            if (displayData != null) {
-                val totalOvertime = displayData.overtimeHours
-                val totalExtra = displayData.extraHours
-                val totalPay = displayData.pay
+            // 绘制加班信息
+            if (attendance != null) {
+                val overtimeHours = attendance.manualOvertimeHours
+                val extraHours = attendance.manualExtraHours
                 
-                var textY = centerY + radius + 15
+                val settings = settingsManager?.getSettings()
+                val baseSalary = settings?.baseSalary ?: 0.0
+                val monthlyWorkDays = settings?.monthlyWorkDays ?: 21.75
+                val dailyWorkHours = settings?.dailyWorkHours ?: 8.0
+                val overtimeRateNormal = settings?.overtimeRateNormal ?: 1.5
                 
-                // 显示加班时长
-                if (totalOvertime > 0) {
-                    val overtimeText = String.format(Locale.getDefault(), "%.1fh", totalOvertime)
-                    canvas.drawText(overtimeText, centerX, textY, overtimePaint)
-                    textY += 22
+                // 计算时薪
+                val hourlyWage = if (monthlyWorkDays > 0 && dailyWorkHours > 0) {
+                    baseSalary / (monthlyWorkDays * dailyWorkHours)
+                } else {
+                    0.0
                 }
                 
-                // 显示加点时长
-                if (totalExtra > 0) {
-                    val extraText = String.format(Locale.getDefault(), "%.1fh", totalExtra)
-                    canvas.drawText(extraText, centerX, textY, extraPaint)
-                    textY += 22
+                // 计算费用
+                val overtimePay = overtimeHours * hourlyWage * overtimeRateNormal
+                val extraPay = extraHours * hourlyWage
+                val totalPay = overtimePay + extraPay
+                
+                // 显示加班时长和加点时长
+                var infoY = centerY + cellHeight / 6
+                
+                if (overtimeHours > 0) {
+                    canvas.drawText(
+                        "${overtimeHours}h",
+                        centerX - cellWidth / 4,
+                        infoY,
+                        overtimeTextPaint
+                    )
                 }
                 
-                // 显示金额
+                if (extraHours > 0) {
+                    canvas.drawText(
+                        "${extraHours}加",
+                        centerX + cellWidth / 4,
+                        infoY,
+                        overtimeTextPaint
+                    )
+                }
+                
+                // 显示费用
                 if (totalPay > 0) {
-                    val moneyText = String.format(Locale.getDefault(), "¥%.0f", totalPay)
-                    canvas.drawText(moneyText, centerX, textY, moneyPaint)
+                    infoY += smallTextPaint.textSize + 2
+                    canvas.drawText(
+                        "¥${String.format("%.0f", totalPay)}",
+                        centerX,
+                        infoY,
+                        smallTextPaint
+                    )
                 }
             }
         }
@@ -248,40 +243,42 @@ class CalendarView @JvmOverloads constructor(
     
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (event.action == MotionEvent.ACTION_UP) {
-            val width = width
-            val cellWidth = width / 7f
-            val cellHeight = height / 7f
+            val clickTime = System.currentTimeMillis()
             
-            val x = event.x
-            val y = event.y
-            
-            val col = (x / cellWidth).toInt()
-            val row = (y / cellHeight).toInt()
-            
-            if (row == 0) {
+            // 防重复点击（300ms内）
+            if (clickTime - lastClickTime < 300) {
                 return true
             }
             
-            val tempCalendar = Calendar.getInstance()
-            tempCalendar.set(currentYear, currentMonth, 1)
-            val firstDayOfWeek = tempCalendar.get(Calendar.DAY_OF_WEEK) - 1
-            val daysInMonth = tempCalendar.getActualMaximum(Calendar.DAY_OF_MONTH)
+            val x = event.x
+            val y = event.y - cellHeight // 减去标题行
             
-            val position = (row - 1) * 7 + col
+            if (y < 0) return true
+            
+            val col = (x / cellWidth).toInt()
+            val row = (y / cellHeight).toInt()
+            val position = row * 7 + col
+            
             val day = position - firstDayOfWeek + 1
             
             if (day in 1..daysInMonth) {
-                selectedDay = day
-                invalidate()
-                onDateClickListener?.onDateClick(currentYear, currentMonth, day)
-                performClick()
+                lastClickedDay = day
+                lastClickTime = clickTime
+                listener?.onDateClick(currentYear, currentMonth, day)
+                return true
             }
         }
         return true
     }
     
-    override fun performClick(): Boolean {
-        super.performClick()
-        return true
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        val width = MeasureSpec.getSize(widthMeasureSpec)
+        val desiredHeight = (cellHeight * 8).toInt() // 7行 + 标题行
+        val height = when (MeasureSpec.getMode(heightMeasureSpec)) {
+            MeasureSpec.EXACTLY -> MeasureSpec.getSize(heightMeasureSpec)
+            MeasureSpec.AT_MOST -> minOf(desiredHeight, MeasureSpec.getSize(heightMeasureSpec))
+            else -> desiredHeight
+        }
+        setMeasuredDimension(width, height)
     }
 }

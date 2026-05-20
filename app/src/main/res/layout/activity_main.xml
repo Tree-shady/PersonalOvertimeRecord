@@ -7,13 +7,15 @@
     android:layout_height="match_parent"
     android:orientation="vertical"
     android:background="#F0F4F8"
+    android:fitsSystemWindows="true"
     tools:context=".MainActivity">
 
     <com.google.android.material.appbar.AppBarLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:background="@color/white"
-        app:elevation="4dp">
+        app:elevation="4dp"
+        android:fitsSystemWindows="true">
 
         <androidx.appcompat.widget.Toolbar
             android:id="@+id/toolbar"

@@ -4,15 +4,14 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
+import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.RecyclerView
 import com.example.personalovertimerecord.R
 import com.example.personalovertimerecord.data.Attendance
 import com.example.personalovertimerecord.data.OvertimeSettings
 import com.example.personalovertimerecord.data.SettingsManager
+import com.example.personalovertimerecord.utils.Formatter
 import com.example.personalovertimerecord.utils.OvertimeCalculator
-import java.text.SimpleDateFormat
-import java.util.Calendar
-import java.util.Date
 import java.util.Locale
 
 class AttendanceAdapter(
@@ -24,14 +23,17 @@ class AttendanceAdapter(
     private var settings: OvertimeSettings = OvertimeSettings()
     
     fun submitList(list: List<Attendance>) {
-        attendanceList = list.sortedByDescending { it.date }
-        notifyDataSetChanged()
+        val sortedList = list.sortedByDescending { it.date }
+        val diffCallback = AttendanceDiffCallback(attendanceList, sortedList)
+        val diffResult = DiffUtil.calculateDiff(diffCallback)
+        
+        attendanceList = sortedList
+        diffResult.dispatchUpdatesTo(this)
     }
     
     fun setSettingsManager(manager: SettingsManager) {
         settingsManager = manager
         settings = manager.getSettings()
-        notifyDataSetChanged()
     }
     
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): AttendanceViewHolder {
@@ -59,14 +61,14 @@ class AttendanceAdapter(
         
         init {
             itemView.setOnClickListener {
-                val position = adapterPosition
+                val position = bindingAdapterPosition
                 if (position != RecyclerView.NO_POSITION) {
                     onItemClick(attendanceList[position])
                 }
             }
             
             itemView.setOnLongClickListener {
-                val position = adapterPosition
+                val position = bindingAdapterPosition
                 if (position != RecyclerView.NO_POSITION) {
                     onItemClick(attendanceList[position])
                     true
@@ -77,14 +79,14 @@ class AttendanceAdapter(
         }
         
         fun bind(attendance: Attendance) {
-            tvDate.text = formatDate(attendance.date)
-            tvDayType.text = getDayType(attendance.date)
+            tvDate.text = Formatter.formatDate(attendance.date)
+            tvDayType.text = Formatter.getDayTypeString(attendance.date)
             
             val result = OvertimeCalculator.calculateOvertime(attendance, settings)
             
-            tvOvertime.text = String.format(Locale.getDefault(), "%.1fh", result.overtimeHours)
-            tvExtra.text = String.format(Locale.getDefault(), "%.1fh", result.extraHours)
-            tvOvertimePay.text = OvertimeCalculator.formatMoney(result.estimatedPay)
+            tvOvertime.text = Formatter.formatHoursShort(result.overtimeHours)
+            tvExtra.text = Formatter.formatHoursShort(result.extraHours)
+            tvOvertimePay.text = Formatter.formatMoney(result.estimatedPay)
             
             if (!attendance.note.isNullOrEmpty()) {
                 tvNote.text = attendance.note
@@ -93,46 +95,28 @@ class AttendanceAdapter(
                 tvNote.visibility = View.GONE
             }
         }
+    }
+    
+    private class AttendanceDiffCallback(
+        private val oldList: List<Attendance>,
+        private val newList: List<Attendance>
+    ) : DiffUtil.Callback() {
         
-        private fun formatDate(dateStr: String): String {
-            return try {
-                val inputFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-                val outputFormat = SimpleDateFormat("MM月dd日 EEEE", Locale.CHINA)
-                val date = inputFormat.parse(dateStr)
-                val formatted = outputFormat.format(date ?: Date())
-                if (formatted.startsWith("星期")) formatted else "星期${formatted}"
-            } catch (e: Exception) {
-                dateStr
-            }
+        override fun getOldListSize(): Int = oldList.size
+        
+        override fun getNewListSize(): Int = newList.size
+        
+        override fun areItemsTheSame(oldItemPosition: Int, newItemPosition: Int): Boolean {
+            return oldList[oldItemPosition].id == newList[newItemPosition].id
         }
         
-        private fun getDayType(dateStr: String): String {
-            return try {
-                val format = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-                val date = format.parse(dateStr) ?: return "工作日"
-                val calendar = Calendar.getInstance()
-                calendar.time = date
-                val dayOfWeek = calendar.get(Calendar.DAY_OF_WEEK)
-                val monthDay = dateStr.substring(5)
-                
-                val holidays = setOf(
-                    "01-01", "01-02", "01-03", 
-                    "02-10", "02-11", "02-12", "02-13", "02-14", "02-15", "02-16", "02-17", 
-                    "04-04", "04-05", "04-06", 
-                    "05-01", "05-02", "05-03", "05-04", "05-05", 
-                    "06-10", 
-                    "09-15", "09-16", "09-17", 
-                    "10-01", "10-02", "10-03", "10-04", "10-05", "10-06", "10-07"
-                )
-                
-                when {
-                    holidays.contains(monthDay) -> "法定假日"
-                    dayOfWeek == Calendar.SATURDAY || dayOfWeek == Calendar.SUNDAY -> "周末"
-                    else -> "工作日"
-                }
-            } catch (e: Exception) {
-                "工作日"
-            }
+        override fun areContentsTheSame(oldItemPosition: Int, newItemPosition: Int): Boolean {
+            val oldItem = oldList[oldItemPosition]
+            val newItem = newList[newItemPosition]
+            return oldItem.date == newItem.date &&
+                   oldItem.manualOvertimeHours == newItem.manualOvertimeHours &&
+                   oldItem.manualExtraHours == newItem.manualExtraHours &&
+                   oldItem.note == newItem.note
         }
     }
 }

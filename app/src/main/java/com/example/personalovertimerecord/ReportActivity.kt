@@ -2,15 +2,17 @@ package com.example.personalovertimerecord
 
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
-import androidx.lifecycle.lifecycleScope
+import androidx.activity.viewModels
 import com.example.personalovertimerecord.data.Attendance
 import com.example.personalovertimerecord.data.DayType
 import com.example.personalovertimerecord.data.OvertimeSettings
 import com.example.personalovertimerecord.data.SettingsManager
 import com.example.personalovertimerecord.databinding.ActivityReportBinding
 import com.example.personalovertimerecord.utils.HolidayManager
+import com.example.personalovertimerecord.utils.Formatter
 import com.example.personalovertimerecord.utils.OvertimeCalculator
 import com.example.personalovertimerecord.utils.SalaryCalculator
+import com.example.personalovertimerecord.viewmodel.AttendanceViewModel
 import com.github.mikephil.charting.data.BarData
 import com.github.mikephil.charting.data.BarDataSet
 import com.github.mikephil.charting.data.BarEntry
@@ -21,13 +23,12 @@ import com.github.mikephil.charting.data.PieData
 import com.github.mikephil.charting.data.PieDataSet
 import com.github.mikephil.charting.data.PieEntry
 import com.github.mikephil.charting.formatter.IndexAxisValueFormatter
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.util.Calendar
 import java.util.Locale
 
 class ReportActivity : AppCompatActivity() {
+    
+    private val viewModel: AttendanceViewModel by viewModels()
     
     private lateinit var binding: ActivityReportBinding
     private lateinit var settingsManager: SettingsManager
@@ -42,8 +43,15 @@ class ReportActivity : AppCompatActivity() {
         settingsManager = SettingsManager(this)
         settings = settingsManager.getSettings()
         
+        clearOldStorageData()
+        
         setupToolbar()
-        loadData()
+        observeViewModel()
+    }
+    
+    private fun clearOldStorageData() {
+        val prefs = getSharedPreferences("attendance_prefs", MODE_PRIVATE)
+        prefs.edit().clear().apply()
     }
     
     private fun setupToolbar() {
@@ -53,21 +61,9 @@ class ReportActivity : AppCompatActivity() {
         binding.tvYear.text = "${currentYear}年"
     }
     
-    private fun loadData() {
-        lifecycleScope.launch {
-            val attendanceList = withContext(Dispatchers.IO) {
-                loadAttendanceData()
-            }
+    private fun observeViewModel() {
+        viewModel.allAttendance.observe(this) { attendanceList ->
             updateReport(attendanceList)
-        }
-    }
-    
-    private suspend fun loadAttendanceData(): List<Attendance> {
-        return try {
-            val storage = com.example.personalovertimerecord.data.AttendanceStorage(this@ReportActivity)
-            storage.getAllAttendance()
-        } catch (e: Exception) {
-            emptyList()
         }
     }
     
@@ -95,8 +91,8 @@ class ReportActivity : AppCompatActivity() {
         val uniqueDays = yearRecords.map { it.date }.distinct().size
         
         binding.tvTotalDays.text = "$uniqueDays 天"
-        binding.tvTotalHours.text = OvertimeCalculator.formatHours(totalHours)
-        binding.tvTotalPay.text = OvertimeCalculator.formatMoney(totalPay)
+        binding.tvTotalHours.text = Formatter.formatHours(totalHours)
+        binding.tvTotalPay.text = Formatter.formatMoney(totalPay)
     }
     
     private fun updateSalaryOverview(attendanceList: List<Attendance>) {
@@ -107,12 +103,12 @@ class ReportActivity : AppCompatActivity() {
             Calendar.getInstance().get(Calendar.MONTH) + 1
         )
         
-        binding.tvBaseSalary.text = OvertimeCalculator.formatMoney(settings.baseSalary)
-        binding.tvPerformance.text = OvertimeCalculator.formatMoney(report.performanceBonus)
-        binding.tvOvertimePay.text = OvertimeCalculator.formatMoney(report.totalOvertimePay)
+        binding.tvBaseSalary.text = Formatter.formatMoney(settings.baseSalary)
+        binding.tvPerformance.text = Formatter.formatMoney(report.performanceBonus)
+        binding.tvOvertimePay.text = Formatter.formatMoney(report.totalOvertimePay)
         
         val totalSalary = settings.baseSalary + report.performanceBonus + report.totalOvertimePay
-        binding.tvTotalSalary.text = OvertimeCalculator.formatMoney(totalSalary)
+        binding.tvTotalSalary.text = Formatter.formatMoney(totalSalary)
     }
     
     private fun setupBarChart(attendanceList: List<Attendance>) {
@@ -190,7 +186,7 @@ class ReportActivity : AppCompatActivity() {
             colors.add(android.graphics.Color.parseColor("#4CAF50"))
         }
         if (holidayHours > 0) {
-            entries.add(PieEntry(holidayHours, "假日"))
+            entries.add(PieEntry(holidayHours, "节假日"))
             colors.add(android.graphics.Color.parseColor("#FF9800"))
         }
         

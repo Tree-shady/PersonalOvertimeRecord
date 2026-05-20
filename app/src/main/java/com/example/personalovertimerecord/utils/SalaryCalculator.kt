@@ -3,7 +3,6 @@ package com.example.personalovertimerecord.utils
 import com.example.personalovertimerecord.data.Attendance
 import com.example.personalovertimerecord.data.DayType
 import com.example.personalovertimerecord.data.OvertimeSettings
-import com.example.personalovertimerecord.data.OvertimeResult
 import java.util.Calendar
 import java.util.Locale
 
@@ -177,14 +176,14 @@ object SalaryCalculator {
             appendLine("📊 ${report.year}年${report.month}月工资报表")
             appendLine("=".repeat(40))
             appendLine()
-            appendLine("💰 基础工资: ${OvertimeCalculator.formatMoney(report.baseSalary)}")
-            appendLine("🎯 绩效奖金: ${OvertimeCalculator.formatMoney(report.performanceBonus)}")
+            appendLine("💰 基础工资: ${Formatter.formatMoney(report.baseSalary)}")
+            appendLine("🎯 绩效奖金: ${Formatter.formatMoney(report.performanceBonus)}")
             appendLine()
             appendLine("📈 加班工资明细:")
-            appendLine("  工作日加班: ${String.format(Locale.getDefault(), "%.1f", report.normalOvertimePay)}h × 1.5 = ${OvertimeCalculator.formatMoney(report.normalOvertimePay)}")
-            appendLine("  周末加班: ${String.format(Locale.getDefault(), "%.1f", report.weekendOvertimePay)}h × 2.0 = ${OvertimeCalculator.formatMoney(report.weekendOvertimePay)}")
-            appendLine("  法定假日: ${String.format(Locale.getDefault(), "%.1f", report.holidayOvertimePay)}h × 3.0 = ${OvertimeCalculator.formatMoney(report.holidayOvertimePay)}")
-            appendLine("  加点工资: ${String.format(Locale.getDefault(), "%.1f", report.totalExtraHours)}h × 1.5 = ${OvertimeCalculator.formatMoney(report.extraPay)}")
+            appendLine("  工作日加班: ${String.format(Locale.getDefault(), "%.1f", report.normalOvertimePay)}h × 1.5 = ${Formatter.formatMoney(report.normalOvertimePay)}")
+            appendLine("  周末加班: ${String.format(Locale.getDefault(), "%.1f", report.weekendOvertimePay)}h × 2.0 = ${Formatter.formatMoney(report.weekendOvertimePay)}")
+            appendLine("  法定假日: ${String.format(Locale.getDefault(), "%.1f", report.holidayOvertimePay)}h × 3.0 = ${Formatter.formatMoney(report.holidayOvertimePay)}")
+            appendLine("  加点工资: ${String.format(Locale.getDefault(), "%.1f", report.totalExtraHours)}h × 1.5 = ${Formatter.formatMoney(report.extraPay)}")
             appendLine()
             appendLine("⏱️ 加班统计:")
             appendLine("  工作日加班: ${report.normalDays}天 (${String.format(Locale.getDefault(), "%.1f", report.normalOvertimePay)}h)")
@@ -192,11 +191,11 @@ object SalaryCalculator {
             appendLine("  法定假日: ${report.holidayDays}天 (${String.format(Locale.getDefault(), "%.1f", report.holidayOvertimePay)}h)")
             appendLine()
             appendLine("📋 总计:")
-            appendLine("  总加班时长: ${OvertimeCalculator.formatHours(report.totalOvertimeHours)}")
-            appendLine("  总加点时长: ${OvertimeCalculator.formatHours(report.totalExtraHours)}")
-            appendLine("  加班总工资: ${OvertimeCalculator.formatMoney(report.totalOvertimePay)}")
+            appendLine("  总加班时长: ${Formatter.formatHours(report.totalOvertimeHours)}")
+            appendLine("  总加点时长: ${Formatter.formatHours(report.totalExtraHours)}")
+            appendLine("  加班总工资: ${Formatter.formatMoney(report.totalOvertimePay)}")
             appendLine()
-            appendLine("💵 本月总工资: ${OvertimeCalculator.formatMoney(report.totalSalary)}")
+            appendLine("💵 本月总工资: ${Formatter.formatMoney(report.totalSalary)}")
             appendLine("=".repeat(40))
         }
     }
