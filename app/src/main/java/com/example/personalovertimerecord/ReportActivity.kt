@@ -50,8 +50,14 @@ class ReportActivity : AppCompatActivity() {
     }
     
     private fun clearOldStorageData() {
-        val prefs = getSharedPreferences("attendance_prefs", MODE_PRIVATE)
-        prefs.edit().clear().apply()
+        val prefs = getSharedPreferences("app_prefs", MODE_PRIVATE)
+        val hasClearedOldData = prefs.getBoolean("cleared_old_data", false)
+        
+        if (!hasClearedOldData) {
+            val oldPrefs = getSharedPreferences("attendance_prefs", MODE_PRIVATE)
+            oldPrefs.edit().clear().apply()
+            prefs.edit().putBoolean("cleared_old_data", true).apply()
+        }
     }
     
     private fun setupToolbar() {

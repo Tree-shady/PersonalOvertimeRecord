@@ -73,6 +73,10 @@ class SettingsActivity : AppCompatActivity() {
             val monthlyWorkDays = binding.etMonthlyWorkDays.text?.toString()?.toDoubleOrNull() ?: 21.75
             val dailyWorkHours = binding.etDailyWorkHours.text?.toString()?.toDoubleOrNull() ?: 8.0
             
+            if (!validateInput(rateNormal, rateWeekend, rateHoliday, baseSalary, monthlyWorkDays, dailyWorkHours)) {
+                return
+            }
+            
             val settings = OvertimeSettings(
                 workStartTime = workStart,
                 workEndTime = workEnd,
@@ -92,5 +96,32 @@ class SettingsActivity : AppCompatActivity() {
         } catch (e: Exception) {
             Toast.makeText(this, "保存失败：${e.message}", Toast.LENGTH_SHORT).show()
         }
+    }
+    
+    private fun validateInput(
+        rateNormal: Double,
+        rateWeekend: Double,
+        rateHoliday: Double,
+        baseSalary: Double,
+        monthlyWorkDays: Double,
+        dailyWorkHours: Double
+    ): Boolean {
+        if (baseSalary <= 0) {
+            Toast.makeText(this, "基本工资必须大于0", Toast.LENGTH_SHORT).show()
+            return false
+        }
+        if (monthlyWorkDays <= 0 || monthlyWorkDays > 31) {
+            Toast.makeText(this, "每月工作天数应在1-31之间", Toast.LENGTH_SHORT).show()
+            return false
+        }
+        if (dailyWorkHours <= 0 || dailyWorkHours > 24) {
+            Toast.makeText(this, "每日工作时长应在0.1-24之间", Toast.LENGTH_SHORT).show()
+            return false
+        }
+        if (rateNormal < 1.0 || rateWeekend < 1.0 || rateHoliday < 1.0) {
+            Toast.makeText(this, "加班倍率不能小于1", Toast.LENGTH_SHORT).show()
+            return false
+        }
+        return true
     }
 }

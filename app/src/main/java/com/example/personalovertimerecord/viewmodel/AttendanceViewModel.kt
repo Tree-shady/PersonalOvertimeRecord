@@ -1,7 +1,6 @@
 package com.example.personalovertimerecord.viewmodel
 
 import android.app.Application
-import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.LiveData
@@ -10,6 +9,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.personalovertimerecord.OvertimeApplication
 import com.example.personalovertimerecord.data.Attendance
 import com.example.personalovertimerecord.repository.AttendanceRepository
+import com.example.personalovertimerecord.utils.AppLogger
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 
@@ -18,10 +18,6 @@ import kotlinx.coroutines.launch
  * 使用Repository进行数据访问，支持Flow响应式更新
  */
 class AttendanceViewModel(application: Application) : AndroidViewModel(application) {
-    
-    companion object {
-        private const val TAG = "AttendanceViewModel"
-    }
     
     private val repository: AttendanceRepository = OvertimeApplication.getAttendanceRepository()
     
@@ -37,8 +33,8 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
     init {
         _allAttendance = repository.getAllAttendanceFlow()
             .catch { e ->
-                Log.e(TAG, "Error loading attendance data", e)
-                _errorMessage.postValue("加载数据失败: ${e.message}")
+                AppLogger.e("Error loading attendance data", e)
+                _errorMessage.postValue("加载数据失败，请稍后重试")
             }
             .asLiveData()
     }
@@ -48,10 +44,10 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
             try {
                 _isLoading.value = true
                 repository.insertAttendance(attendance)
-                Log.d(TAG, "Attendance added: ${attendance.date}")
+                AppLogger.sensitive("Add Attendance", attendance.date, true)
             } catch (e: Exception) {
-                Log.e(TAG, "Error adding attendance", e)
-                _errorMessage.value = "添加记录失败: ${e.message}"
+                AppLogger.e("Error adding attendance", e)
+                _errorMessage.value = "添加记录失败，请稍后重试"
             } finally {
                 _isLoading.value = false
             }
@@ -63,10 +59,10 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
             try {
                 _isLoading.value = true
                 repository.updateAttendance(attendance)
-                Log.d(TAG, "Attendance updated: ${attendance.date}")
+                AppLogger.sensitive("Update Attendance", attendance.date, true)
             } catch (e: Exception) {
-                Log.e(TAG, "Error updating attendance", e)
-                _errorMessage.value = "更新记录失败: ${e.message}"
+                AppLogger.e("Error updating attendance", e)
+                _errorMessage.value = "更新记录失败，请稍后重试"
             } finally {
                 _isLoading.value = false
             }
@@ -78,10 +74,10 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
             try {
                 _isLoading.value = true
                 repository.deleteAttendance(attendance.id)
-                Log.d(TAG, "Attendance deleted: ${attendance.date}")
+                AppLogger.sensitive("Delete Attendance", attendance.date, true)
             } catch (e: Exception) {
-                Log.e(TAG, "Error deleting attendance", e)
-                _errorMessage.value = "删除记录失败: ${e.message}"
+                AppLogger.e("Error deleting attendance", e)
+                _errorMessage.value = "删除记录失败，请稍后重试"
             } finally {
                 _isLoading.value = false
             }
@@ -96,8 +92,8 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
         return try {
             repository.getAttendanceByDate(date)
         } catch (e: Exception) {
-            Log.e(TAG, "Error getting attendance by date", e)
-            _errorMessage.postValue("获取记录失败: ${e.message}")
+            AppLogger.e("Error getting attendance by date", e)
+            _errorMessage.postValue("获取记录失败，请稍后重试")
             null
         }
     }

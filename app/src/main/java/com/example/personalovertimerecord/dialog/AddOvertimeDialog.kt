@@ -9,6 +9,7 @@ import android.widget.ArrayAdapter
 import android.widget.AutoCompleteTextView
 import android.widget.EditText
 import android.widget.TextView
+import android.widget.Toast
 import com.example.personalovertimerecord.R
 import com.example.personalovertimerecord.data.Attendance
 import com.example.personalovertimerecord.data.OvertimeRecord
@@ -98,44 +99,73 @@ class AddOvertimeDialog(
     }
     
     private fun saveData() {
-        val overtimeHours = etOvertimeHours.text.toString().toDoubleOrNull() ?: 0.0
-        val extraHours = etExtraHours.text.toString().toDoubleOrNull() ?: 0.0
-        val note = etNote.text.toString()
+        val overtimeHoursStr = etOvertimeHours.text?.toString() ?: ""
+        val extraHoursStr = etExtraHours.text?.toString() ?: ""
+        val note = etNote.text?.toString() ?: ""
         
-        if (overtimeHours <= 0 && extraHours <= 0) {
-            return
+        val overtimeHours = overtimeHoursStr.toDoubleOrNull()
+        val extraHours = extraHoursStr.toDoubleOrNull()
+        
+        when {
+            overtimeHours == null && extraHours == null -> {
+                Toast.makeText(context, "请输入加班时长或加点时长", Toast.LENGTH_SHORT).show()
+                return
+            }
+            overtimeHours != null && overtimeHours < 0 -> {
+                Toast.makeText(context, "加班时长不能为负数", Toast.LENGTH_SHORT).show()
+                return
+            }
+            extraHours != null && extraHours < 0 -> {
+                Toast.makeText(context, "加点时长不能为负数", Toast.LENGTH_SHORT).show()
+                return
+            }
+            overtimeHours != null && overtimeHours > 24 -> {
+                Toast.makeText(context, "单日加班时长不能超过24小时", Toast.LENGTH_SHORT).show()
+                return
+            }
+            extraHours != null && extraHours > 24 -> {
+                Toast.makeText(context, "单日加点时长不能超过24小时", Toast.LENGTH_SHORT).show()
+                return
+            }
+            (overtimeHours == 0.0 || overtimeHours == null) && 
+            (extraHours == 0.0 || extraHours == null) -> {
+                Toast.makeText(context, "请输入有效的加班或加点时长", Toast.LENGTH_SHORT).show()
+                return
+            }
         }
         
+        val finalOvertime = overtimeHours ?: 0.0
+        val finalExtra = extraHours ?: 0.0
         val dateStr = String.format(Locale.getDefault(), "%d-%02d-%02d", year, month + 1, day)
         
         if (existingRecord != null && onSaveOvertimeRecord != null) {
             val updatedRecord = existingRecord.copy(
-                overtimeHours = overtimeHours,
-                extraHours = extraHours,
+                overtimeHours = finalOvertime,
+                extraHours = finalExtra,
                 note = if (note.isNullOrEmpty()) null else note
             )
             onSaveOvertimeRecord?.invoke(updatedRecord)
         } else if (existingAttendance != null && onSaveAttendance != null) {
             val updatedAttendance = existingAttendance.copy(
-                manualOvertimeHours = if (overtimeHours > 0) overtimeHours else -1.0,
-                manualExtraHours = if (extraHours > 0) extraHours else -1.0,
+                manualOvertimeHours = if (finalOvertime > 0) finalOvertime else -1.0,
+                manualExtraHours = if (finalExtra > 0) finalExtra else -1.0,
                 note = if (note.isNullOrEmpty()) null else note
             )
             onSaveAttendance?.invoke(updatedAttendance)
         } else if (onSaveOvertimeRecord != null) {
             val newRecord = OvertimeRecord(
                 date = dateStr,
-                overtimeHours = overtimeHours,
-                extraHours = extraHours,
+                overtimeHours = finalOvertime,
+                extraHours = finalExtra,
                 note = if (note.isNullOrEmpty()) null else note
             )
             onSaveOvertimeRecord?.invoke(newRecord)
         } else if (onSaveAttendance != null) {
             val newAttendance = Attendance(
-                id = System.currentTimeMillis(),
+                id = 0, // 让Room数据库自动生成ID
                 date = dateStr,
-                manualOvertimeHours = if (overtimeHours > 0) overtimeHours else -1.0,
-                manualExtraHours = if (extraHours > 0) extraHours else -1.0,
+                manualOvertimeHours = if (finalOvertime > 0) finalOvertime else -1.0,
+                manualExtraHours = if (finalExtra > 0) finalExtra else -1.0,
                 note = if (note.isNullOrEmpty()) null else note
             )
             onSaveAttendance?.invoke(newAttendance)

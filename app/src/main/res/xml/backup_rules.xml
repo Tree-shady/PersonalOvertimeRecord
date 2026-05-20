@@ -1,13 +1,13 @@
-<?xml version="1.0" encoding="utf-8"?><!--
-   Sample backup rules file; uncomment and customize as necessary.
-   See https://developer.android.com/guide/topics/data/autobackup
-   for details.
-   Note: This file is ignored for devices older than API 31
-   See https://developer.android.com/about/versions/12/backup-restore
--->
+<?xml version="1.0" encoding="utf-8"?>
 <full-backup-content>
-    <!--
-   <include domain="sharedpref" path="."/>
-   <exclude domain="sharedpref" path="device.xml"/>
--->
+    <!-- 排除所有敏感数据，防止泄露到云端备份 -->
+    <exclude domain="sharedpref" path="secure_overtime_prefs"/>
+    <exclude domain="sharedpref" path="overtime_settings"/>
+    <exclude domain="sharedpref" path="overtime_prefs"/>
+    <exclude domain="sharedpref" path="attendance_prefs"/>
+    <exclude domain="sharedpref" path="app_prefs"/>
+    <exclude domain="database" path="overtime_database"/>
+    <exclude domain="database" path="overtime_database-journal"/>
+    <exclude domain="database" path="overtime_database-wal"/>
+    <exclude domain="database" path="overtime_database-shm"/>
 </full-backup-content>

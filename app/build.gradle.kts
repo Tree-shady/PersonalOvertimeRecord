@@ -11,6 +11,7 @@ android {
     
     buildFeatures {
         viewBinding = true
+        buildConfig = true
     }
 
     defaultConfig {
@@ -113,6 +114,13 @@ dependencies {
     ksp(libs.androidx.room.compiler)
     
     implementation(libs.mpchart)
+    
+    // Security - Encrypted SharedPreferences
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
+    
+    // SQLCipher - Database Encryption
+    implementation("net.zetetic:android-database-sqlcipher:4.5.4")
+    implementation("androidx.sqlite:sqlite-ktx:2.2.0")
     
     // Firebase dependencies - 已禁用云同步
     // implementation(libs.firebase.auth.ktx)

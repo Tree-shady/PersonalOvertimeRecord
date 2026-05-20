@@ -1,19 +1,25 @@
-<?xml version="1.0" encoding="utf-8"?><!--
-   Sample data extraction rules file; uncomment and customize as necessary.
-   See https://developer.android.com/about/versions/12/backup-restore#xml-changes
-   for details.
--->
+<?xml version="1.0" encoding="utf-8"?>
 <data-extraction-rules>
+    <!-- Android 12+ 数据提取规则 -->
     <cloud-backup>
-        <!-- TODO: Use <include> and <exclude> to control what is backed up.
-        <include .../>
-        <exclude .../>
-        -->
+        <!-- 排除所有敏感数据，防止泄露到云端 -->
+        <exclude domain="sharedpref" path="secure_overtime_prefs"/>
+        <exclude domain="sharedpref" path="overtime_settings"/>
+        <exclude domain="sharedpref" path="overtime_prefs"/>
+        <exclude domain="sharedpref" path="attendance_prefs"/>
+        <exclude domain="sharedpref" path="app_prefs"/>
+        <exclude domain="database" path="overtime_database"/>
+        <exclude domain="database" path="overtime_database-journal"/>
+        <exclude domain="database" path="overtime_database-wal"/>
+        <exclude domain="database" path="overtime_database-shm"/>
     </cloud-backup>
-    <!--
     <device-transfer>
-        <include .../>
-        <exclude .../>
+        <!-- 设备迁移时同样排除敏感数据 -->
+        <exclude domain="sharedpref" path="secure_overtime_prefs"/>
+        <exclude domain="sharedpref" path="overtime_settings"/>
+        <exclude domain="sharedpref" path="overtime_prefs"/>
+        <exclude domain="sharedpref" path="attendance_prefs"/>
+        <exclude domain="sharedpref" path="app_prefs"/>
+        <exclude domain="database" path="overtime_database"/>
     </device-transfer>
-    -->
 </data-extraction-rules>

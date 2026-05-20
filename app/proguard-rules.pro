@@ -19,3 +19,28 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# Security Rules - Data Models
+-keep class com.example.personalovertimerecord.data.** { *; }
+-keep class com.example.personalovertimerecord.data.db.** { *; }
+
+# Room Database
+-keep class * extends androidx.room.RoomDatabase
+-keep @androidx.room.Entity class *
+-dontwarn androidx.room.paging.**
+
+# SQLCipher
+-keep class net.sqlcipher.** { *; }
+-keep class net.sqlcipher.database.** { *; }
+
+# EncryptedSharedPreferences
+-keep class androidx.security.crypto.** { *; }
+
+# Keep data classes for JSON serialization
+-keepclassmembers class * {
+    @com.google.gson.annotations.SerializedName <fields>;
+}
+
+# Keep Kotlin Metadata
+-keepattributes *Annotation*
+-keep class kotlin.Metadata { *; }

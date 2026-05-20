@@ -2,12 +2,13 @@ package com.example.personalovertimerecord.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.example.personalovertimerecord.utils.SecurePreferencesManager
 import org.json.JSONArray
 import org.json.JSONObject
 
 class OvertimeStorage(context: Context) {
     
-    private val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val prefs: SharedPreferences = SecurePreferencesManager.getEncryptedPrefs(context)
     
     private var cache: List<OvertimeRecord>? = null
     private var isCacheDirty: Boolean = true

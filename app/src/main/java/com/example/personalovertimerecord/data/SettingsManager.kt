@@ -2,10 +2,11 @@ package com.example.personalovertimerecord.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.example.personalovertimerecord.utils.SecurePreferencesManager
 
 class SettingsManager(context: Context) {
     
-    private val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val prefs: SharedPreferences = SecurePreferencesManager.getEncryptedPrefs(context)
     
     fun saveSettings(settings: OvertimeSettings) {
         prefs.edit().apply {
