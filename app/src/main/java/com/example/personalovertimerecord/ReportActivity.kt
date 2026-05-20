@@ -165,12 +165,15 @@ class ReportActivity : AppCompatActivity() {
         
         yearRecords.forEach { record ->
             val dayType = HolidayManager.getDayType(record.date)
-            val hours = record.manualOvertimeHours.toFloat()
+            // 处理默认值：负数表示未设置，视为0
+            val overtimeHours = if (record.manualOvertimeHours >= 0) record.manualOvertimeHours.toFloat() else 0f
+            val extraHours = if (record.manualExtraHours >= 0) record.manualExtraHours.toFloat() else 0f
+            val totalHours = overtimeHours + extraHours
             
             when (dayType) {
-                DayType.WORKDAY -> normalHours += hours
-                DayType.WEEKEND -> weekendHours += hours
-                DayType.HOLIDAY -> holidayHours += hours
+                DayType.WORKDAY -> normalHours += totalHours
+                DayType.WEEKEND -> weekendHours += totalHours
+                DayType.HOLIDAY -> holidayHours += totalHours
             }
         }
         
