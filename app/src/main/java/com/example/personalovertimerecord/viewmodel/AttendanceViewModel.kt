@@ -11,6 +11,9 @@ import com.example.personalovertimerecord.data.Attendance
 import com.example.personalovertimerecord.repository.AttendanceRepository
 import com.example.personalovertimerecord.utils.AppLogger
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 /**
@@ -21,8 +24,12 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
     
     private val repository: AttendanceRepository = OvertimeApplication.getAttendanceRepository()
     
-    private lateinit var _allAttendance: LiveData<List<Attendance>>
-    val allAttendance: LiveData<List<Attendance>> get() = _allAttendance
+    // 使用 StateFlow 替代 LiveData，更好支持刷新
+    private val _allAttendanceState = MutableStateFlow<List<Attendance>>(emptyList())
+    val allAttendanceState: StateFlow<List<Attendance>> = _allAttendanceState.asStateFlow()
+    
+    // 为了保持向后兼容，保留 LiveData
+    val allAttendance: LiveData<List<Attendance>> get() = _allAttendanceState.asLiveData()
     
     private val _errorMessage = MutableLiveData<String?>()
     val errorMessage: LiveData<String?> = _errorMessage
@@ -31,12 +38,20 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
     val isLoading: LiveData<Boolean> = _isLoading
     
     init {
-        _allAttendance = repository.getAllAttendanceFlow()
-            .catch { e ->
-                AppLogger.e("Error loading attendance data", e)
-                _errorMessage.postValue("加载数据失败，请稍后重试")
-            }
-            .asLiveData()
+        loadAttendanceData()
+    }
+    
+    private fun loadAttendanceData() {
+        viewModelScope.launch {
+            repository.getAllAttendanceFlow()
+                .catch { e ->
+                    AppLogger.e("Error loading attendance data", e)
+                    _errorMessage.postValue("加载数据失败，请稍后重试")
+                }
+                .collect { attendanceList ->
+                    _allAttendanceState.value = attendanceList
+                }
+        }
     }
     
     fun addAttendance(attendance: Attendance) {
@@ -102,13 +117,14 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
         _errorMessage.value = null
     }
     
+    /**
+     * 刷新数据 - 重新从数据库加载
+     * StateFlow 已经响应式更新，此方法主要用于强制刷新或重置状态
+     */
     fun refreshData() {
-        // 重新初始化数据加载
-        _allAttendance = repository.getAllAttendanceFlow()
-            .catch { e ->
-                AppLogger.e("Error loading attendance data", e)
-                _errorMessage.postValue("加载数据失败，请稍后重试")
-            }
-            .asLiveData()
+        // 不需要重新创建 Flow，因为数据变化会自动通过 Flow 通知
+        // 这里可以添加一些刷新状态提示
+        _errorMessage.value = null
+        AppLogger.d("Refreshing data...")
     }
 }

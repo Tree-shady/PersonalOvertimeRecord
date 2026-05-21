@@ -10,6 +10,9 @@ import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
 
+/**
+ * WebDAV 配置
+ */
 data class WebDAVConfig(
     val serverUrl: String,
     val username: String,
@@ -17,10 +20,24 @@ data class WebDAVConfig(
     val remotePath: String = "/overtime_record/"
 )
 
+/**
+ * WebDAV 管理器
+ * 负责与 WebDAV 服务器通信，支持文件上传、下载、连接测试等
+ */
 class WebDAVManager(private val context: Context) {
 
-    private val backupFileName = "overtime_backup.json"
+    companion object {
+        private const val DEFAULT_BACKUP_FILENAME = "overtime_backup.json"
+        private const val CONNECTION_TIMEOUT_MS = 30000
+        private const val READ_TIMEOUT_MS = 30000
+        private const val DATE_FORMAT_PATTERN = "EEE, dd MMM yyyy HH:mm:ss zzz"
+    }
 
+    private val backupFileName = DEFAULT_BACKUP_FILENAME
+
+    /**
+     * 测试 WebDAV 连接
+     */
     suspend fun testConnection(config: WebDAVConfig): Boolean = withContext(Dispatchers.IO) {
         try {
             val dirUrl = buildUrl(config.serverUrl, config.remotePath)
@@ -29,24 +46,26 @@ class WebDAVManager(private val context: Context) {
             createDirIfNotExists(dirUrl, config)
             
             // 检查是否可以访问
-            val url = URL(dirUrl)
-            val connection = url.openConnection() as HttpURLConnection
-            connection.requestMethod = "PROPFIND"
-            connection.setRequestProperty("Authorization", getBasicAuth(config.username, config.password))
-            connection.setRequestProperty("Depth", "0")
-            connection.connectTimeout = 30000
-            connection.readTimeout = 30000
-            
-            val responseCode = connection.responseCode
-            connection.disconnect()
-            
-            return@withContext responseCode in 200..299
+            executeRequest(
+                url = dirUrl,
+                method = "PROPFIND",
+                config = config,
+                setup = { connection ->
+                    connection.setRequestProperty("Depth", "0")
+                },
+                handleResponse = { connection ->
+                    connection.responseCode in 200..299
+                }
+            )
         } catch (e: Exception) {
             AppLogger.e("WebDAV连接测试失败", e)
             false
         }
     }
 
+    /**
+     * 上传文件到 WebDAV
+     */
     suspend fun uploadFile(config: WebDAVConfig, content: String): Boolean = withContext(Dispatchers.IO) {
         try {
             val dirUrl = buildUrl(config.serverUrl, config.remotePath)
@@ -56,130 +75,175 @@ class WebDAVManager(private val context: Context) {
             createDirIfNotExists(dirUrl, config)
             
             // 上传文件
-            val url = URL(fileUrl)
-            val connection = url.openConnection() as HttpURLConnection
-            connection.requestMethod = "PUT"
-            connection.setRequestProperty("Authorization", getBasicAuth(config.username, config.password))
-            connection.setRequestProperty("Content-Type", "application/json")
-            connection.doOutput = true
-            connection.connectTimeout = 30000
-            connection.readTimeout = 30000
-            
-            DataOutputStream(connection.outputStream).use { it.write(content.toByteArray(Charsets.UTF_8)) }
-            
-            val responseCode = connection.responseCode
-            connection.disconnect()
-            
-            if (responseCode in 200..299) {
-                AppLogger.d("WebDAV文件上传成功: $fileUrl")
-                true
-            } else {
-                AppLogger.e("WebDAV文件上传失败: $responseCode")
-                false
-            }
+            executeRequest(
+                url = fileUrl,
+                method = "PUT",
+                config = config,
+                setup = { connection ->
+                    connection.setRequestProperty("Content-Type", "application/json")
+                    connection.doOutput = true
+                },
+                writeBody = { outputStream ->
+                    DataOutputStream(outputStream).use { it.write(content.toByteArray(Charsets.UTF_8)) }
+                },
+                handleResponse = { connection ->
+                    val success = connection.responseCode in 200..299
+                    if (success) {
+                        AppLogger.d("WebDAV文件上传成功: $fileUrl")
+                    } else {
+                        AppLogger.e("WebDAV文件上传失败: ${connection.responseCode}")
+                    }
+                    success
+                }
+            )
         } catch (e: Exception) {
             AppLogger.e("WebDAV文件上传失败", e)
             false
         }
     }
 
+    /**
+     * 从 WebDAV 下载文件
+     */
     suspend fun downloadFile(config: WebDAVConfig): String? = withContext(Dispatchers.IO) {
         try {
             val fileUrl = buildUrl(config.serverUrl, config.remotePath, backupFileName)
             
-            val url = URL(fileUrl)
-            val connection = url.openConnection() as HttpURLConnection
-            connection.requestMethod = "GET"
-            connection.setRequestProperty("Authorization", getBasicAuth(config.username, config.password))
-            connection.connectTimeout = 30000
-            connection.readTimeout = 30000
-            
-            val responseCode = connection.responseCode
-            if (responseCode in 200..299) {
-                val content = BufferedReader(InputStreamReader(connection.inputStream, Charsets.UTF_8)).use { it.readText() }
-                connection.disconnect()
-                AppLogger.d("WebDAV文件下载成功")
-                content
-            } else {
-                connection.disconnect()
-                AppLogger.e("WebDAV文件不存在或下载失败: $responseCode")
-                null
-            }
+            executeRequest(
+                url = fileUrl,
+                method = "GET",
+                config = config,
+                handleResponse = { connection ->
+                    if (connection.responseCode in 200..299) {
+                        val content = BufferedReader(InputStreamReader(connection.inputStream, Charsets.UTF_8)).use { it.readText() }
+                        AppLogger.d("WebDAV文件下载成功")
+                        content
+                    } else {
+                        AppLogger.e("WebDAV文件不存在或下载失败: ${connection.responseCode}")
+                        null
+                    }
+                }
+            )
         } catch (e: Exception) {
             AppLogger.e("WebDAV文件下载失败", e)
             null
         }
     }
 
+    /**
+     * 获取文件最后修改时间
+     */
     suspend fun getFileModifiedTime(config: WebDAVConfig): Long? = withContext(Dispatchers.IO) {
         try {
             val fileUrl = buildUrl(config.serverUrl, config.remotePath, backupFileName)
             
-            val url = URL(fileUrl)
-            val connection = url.openConnection() as HttpURLConnection
-            connection.requestMethod = "HEAD"
-            connection.setRequestProperty("Authorization", getBasicAuth(config.username, config.password))
-            connection.connectTimeout = 30000
-            connection.readTimeout = 30000
-            
-            val responseCode = connection.responseCode
-            if (responseCode in 200..299) {
-                val lastModified = connection.getHeaderField("Last-Modified")
-                connection.disconnect()
-                lastModified?.let {
-                    try {
-                        val dateFormat = java.text.SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz", java.util.Locale.ENGLISH)
-                        dateFormat.parse(it)?.time
-                    } catch (e: Exception) {
+            executeRequest(
+                url = fileUrl,
+                method = "HEAD",
+                config = config,
+                handleResponse = { connection ->
+                    if (connection.responseCode in 200..299) {
+                        val lastModified = connection.getHeaderField("Last-Modified")
+                        lastModified?.let {
+                            try {
+                                val dateFormat = java.text.SimpleDateFormat(DATE_FORMAT_PATTERN, java.util.Locale.ENGLISH)
+                                dateFormat.parse(it)?.time
+                            } catch (e: Exception) {
+                                null
+                            }
+                        }
+                    } else {
                         null
                     }
                 }
-            } else {
-                connection.disconnect()
-                null
-            }
+            )
         } catch (e: Exception) {
             AppLogger.e("获取WebDAV文件修改时间失败", e)
             null
         }
     }
 
+    /**
+     * 如果目录不存在则创建
+     */
     private suspend fun createDirIfNotExists(dirUrl: String, config: WebDAVConfig) = withContext(Dispatchers.IO) {
         try {
             // 检查目录是否存在
-            val checkUrl = URL(dirUrl)
-            val checkConnection = checkUrl.openConnection() as HttpURLConnection
-            checkConnection.requestMethod = "PROPFIND"
-            checkConnection.setRequestProperty("Authorization", getBasicAuth(config.username, config.password))
-            checkConnection.setRequestProperty("Depth", "0")
-            checkConnection.connectTimeout = 30000
-            checkConnection.readTimeout = 30000
+            val exists = executeRequest(
+                url = dirUrl,
+                method = "PROPFIND",
+                config = config,
+                setup = { connection ->
+                    connection.setRequestProperty("Depth", "0")
+                },
+                handleResponse = { connection ->
+                    connection.responseCode in 200..299
+                }
+            )
             
-            val checkResponseCode = checkConnection.responseCode
-            checkConnection.disconnect()
-            
-            if (checkResponseCode !in 200..299) {
+            if (!exists) {
                 // 目录不存在，创建它
-                val mkcolUrl = URL(dirUrl)
-                val mkcolConnection = mkcolUrl.openConnection() as HttpURLConnection
-                mkcolConnection.requestMethod = "MKCOL"
-                mkcolConnection.setRequestProperty("Authorization", getBasicAuth(config.username, config.password))
-                mkcolConnection.connectTimeout = 30000
-                mkcolConnection.readTimeout = 30000
-                
-                mkcolConnection.responseCode
-                mkcolConnection.disconnect()
+                executeRequest(
+                    url = dirUrl,
+                    method = "MKCOL",
+                    config = config,
+                    handleResponse = { connection ->
+                        AppLogger.d("WebDAV目录创建状态: ${connection.responseCode}")
+                    }
+                )
             }
         } catch (e: Exception) {
             AppLogger.e("创建WebDAV目录失败", e)
         }
     }
 
+    /**
+     * 通用的 HTTP 请求执行方法
+     */
+    private inline fun <T> executeRequest(
+        url: String,
+        method: String,
+        config: WebDAVConfig,
+        setup: (HttpURLConnection) -> Unit = {},
+        writeBody: (java.io.OutputStream) -> Unit = {},
+        handleResponse: (HttpURLConnection) -> T
+    ): T {
+        val urlObj = URL(url)
+        var connection: HttpURLConnection? = null
+        
+        return try {
+            connection = urlObj.openConnection() as HttpURLConnection
+            connection.requestMethod = method
+            connection.setRequestProperty("Authorization", getBasicAuth(config.username, config.password))
+            connection.connectTimeout = CONNECTION_TIMEOUT_MS
+            connection.readTimeout = READ_TIMEOUT_MS
+            
+            // 自定义设置
+            setup(connection)
+            
+            // 写入请求体
+            if (method in listOf("PUT", "POST")) {
+                writeBody(connection.outputStream)
+            }
+            
+            // 处理响应
+            handleResponse(connection)
+        } finally {
+            connection?.disconnect()
+        }
+    }
+
+    /**
+     * 获取 Basic Auth 头部
+     */
     private fun getBasicAuth(username: String, password: String): String {
         val credentials = "$username:$password"
         return "Basic " + Base64.encodeToString(credentials.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
     }
 
+    /**
+     * 构建 URL
+     */
     private fun buildUrl(vararg parts: String): String {
         val urlBuilder = StringBuilder()
         parts.forEachIndexed { index, part ->

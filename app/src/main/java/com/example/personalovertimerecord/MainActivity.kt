@@ -33,7 +33,7 @@ import java.util.Date
 class MainActivity : AppCompatActivity() {
     
     companion object {
-        private const val TIME_UPDATE_INTERVAL = 1000L
+        private const val TIME_UPDATE_INTERVAL = 5000L // 5秒更新一次，减少资源消耗
     }
     
     private val viewModel: AttendanceViewModel by viewModels()
@@ -70,7 +70,7 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         startTimeUpdates()
         currentSettings = settingsManager.getSettings()
-        adapter.setSettingsManager(settingsManager)
+        adapter.updateSettings(currentSettings)
         viewModel.allAttendance.value?.let { attendanceList ->
             updateMonthlyStats(attendanceList)
         }
@@ -190,9 +190,9 @@ class MainActivity : AppCompatActivity() {
     
     private fun setupRecyclerView() {
         adapter = AttendanceAdapter(
+            settings = currentSettings,
             onItemClick = { attendance -> showEditDialog(attendance) }
         )
-        adapter.setSettingsManager(settingsManager)
         binding.recyclerView.adapter = adapter
         binding.recyclerView.layoutManager = LinearLayoutManager(this)
     }
@@ -278,6 +278,7 @@ class MainActivity : AppCompatActivity() {
             val message = when (result) {
                 SyncResult.SUCCESS -> "同步成功！"
                 SyncResult.NO_CONFIG -> "请先在设置中配置 WebDAV"
+                SyncResult.NO_NETWORK -> "网络不可用，请检查网络连接"
                 SyncResult.CONNECTION_FAILED -> "连接失败，请检查网络和配置"
                 SyncResult.UPLOAD_FAILED -> "上传失败"
                 SyncResult.DOWNLOAD_FAILED -> "下载失败"

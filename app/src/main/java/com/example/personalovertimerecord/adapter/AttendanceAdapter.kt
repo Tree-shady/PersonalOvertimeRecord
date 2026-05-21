@@ -9,19 +9,38 @@ import androidx.recyclerview.widget.RecyclerView
 import com.example.personalovertimerecord.R
 import com.example.personalovertimerecord.data.Attendance
 import com.example.personalovertimerecord.data.OvertimeSettings
-import com.example.personalovertimerecord.data.SettingsManager
 import com.example.personalovertimerecord.utils.Formatter
 import com.example.personalovertimerecord.utils.OvertimeCalculator
 import java.util.Locale
 
+/**
+ * 考勤记录适配器
+ * @param settings 加班设置
+ * @param onItemClick 列表项点击回调
+ */
 class AttendanceAdapter(
+    private var settings: OvertimeSettings = OvertimeSettings(),
     private val onItemClick: (Attendance) -> Unit
 ) : RecyclerView.Adapter<AttendanceAdapter.AttendanceViewHolder>() {
     
-    private var attendanceList: List<Attendance> = emptyList()
-    private lateinit var settingsManager: SettingsManager
-    private var settings: OvertimeSettings = OvertimeSettings()
+    companion object {
+        private const val EMPTY_VIEW_TYPE = 0
+        private const val ITEM_VIEW_TYPE = 1
+    }
     
+    private var attendanceList: List<Attendance> = emptyList()
+    
+    /**
+     * 更新设置
+     */
+    fun updateSettings(newSettings: OvertimeSettings) {
+        settings = newSettings
+        notifyDataSetChanged() // 刷新所有列表项
+    }
+    
+    /**
+     * 提交新的列表数据
+     */
     fun submitList(list: List<Attendance>) {
         val sortedList = list.sortedByDescending { it.date }
         val diffCallback = AttendanceDiffCallback(attendanceList, sortedList)
@@ -31,17 +50,8 @@ class AttendanceAdapter(
         diffResult.dispatchUpdatesTo(this)
     }
     
-    fun setSettingsManager(manager: SettingsManager) {
-        settingsManager = manager
-        settings = manager.getSettings()
-    }
-    
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): AttendanceViewHolder {
         val view = LayoutInflater.from(parent.context).inflate(R.layout.item_attendance, parent, false)
-        if (!::settingsManager.isInitialized) {
-            settingsManager = SettingsManager(parent.context)
-            settings = settingsManager.getSettings()
-        }
         return AttendanceViewHolder(view)
     }
     
@@ -88,11 +98,11 @@ class AttendanceAdapter(
             tvExtra.text = Formatter.formatHoursShort(result.extraHours)
             tvOvertimePay.text = Formatter.formatMoney(result.estimatedPay)
             
-            if (!attendance.note.isNullOrEmpty()) {
-                tvNote.text = attendance.note
-                tvNote.visibility = View.VISIBLE
+            tvNote.text = attendance.note
+            tvNote.visibility = if (!attendance.note.isNullOrEmpty()) {
+                View.VISIBLE
             } else {
-                tvNote.visibility = View.GONE
+                View.GONE
             }
         }
     }
