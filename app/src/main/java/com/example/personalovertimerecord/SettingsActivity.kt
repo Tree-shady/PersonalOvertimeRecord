@@ -4,11 +4,14 @@ import android.os.Bundle
 import android.view.View
 import android.view.ViewTreeObserver
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.example.personalovertimerecord.data.OvertimeSettings
 import com.example.personalovertimerecord.data.SettingsManager
 import com.example.personalovertimerecord.databinding.ActivitySettingsBinding
+import com.example.personalovertimerecord.utils.AppLogger
+import com.example.personalovertimerecord.utils.NetworkUtils
 import com.example.personalovertimerecord.utils.WebDAVConfig
 import com.example.personalovertimerecord.utils.WebDAVManager
 import kotlinx.coroutines.Dispatchers
@@ -20,6 +23,7 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var binding: ActivitySettingsBinding
     private lateinit var settingsManager: SettingsManager
     private lateinit var webDAVManager: WebDAVManager
+    private var lastResponseCode: Int = 0
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -95,7 +99,7 @@ class SettingsActivity : AppCompatActivity() {
             binding.etWebDAVPassword.setText(it.password)
             binding.etWebDAVPath.setText(it.remotePath)
         } ?: run {
-            binding.etWebDAVPath.setText("/overtime_record/")
+            binding.etWebDAVPath.setText("/")
         }
     }
     
@@ -154,12 +158,25 @@ class SettingsActivity : AppCompatActivity() {
     private fun testWebDAVConnection() {
         val config = getCurrentWebDAVConfig() ?: return
         
+        // 检查网络连接
+        if (!NetworkUtils.isNetworkAvailable(this)) {
+            Toast.makeText(this, "请先检查网络连接", Toast.LENGTH_SHORT).show()
+            return
+        }
+        
         binding.btnTestConnection.isEnabled = false
         binding.btnTestConnection.text = "测试中..."
         
         lifecycleScope.launch {
             val success = withContext(Dispatchers.IO) {
-                webDAVManager.testConnection(config)
+                try {
+                    val testUrl = buildTestUrl(config)
+                    AppLogger.d("开始测试连接: $testUrl")
+                    webDAVManager.testConnection(config)
+                } catch (e: Exception) {
+                    AppLogger.e("测试连接异常", e)
+                    false
+                }
             }
             
             binding.btnTestConnection.isEnabled = true
@@ -168,9 +185,68 @@ class SettingsActivity : AppCompatActivity() {
             if (success) {
                 Toast.makeText(this@SettingsActivity, "连接成功！", Toast.LENGTH_SHORT).show()
             } else {
-                Toast.makeText(this@SettingsActivity, "连接失败，请检查配置", Toast.LENGTH_SHORT).show()
+                showWebDAVHelpDialog()
             }
         }
+    }
+    
+    private fun buildTestUrl(config: WebDAVConfig): String {
+        val cleanBaseUrl = config.serverUrl.trimEnd('/')
+        val cleanPath = config.remotePath.trim('/')
+        
+        return if (cleanPath.isEmpty()) {
+            "$cleanBaseUrl/.test_connection"
+        } else {
+            "$cleanBaseUrl/$cleanPath/.test_connection"
+        }
+    }
+    
+    private fun showWebDAVHelpDialog() {
+        val responseCodeInfo = if (WebDAVManager.lastResponseCode != 0) {
+            val codeDesc = when (WebDAVManager.lastResponseCode) {
+                200 -> "成功"
+                201 -> "创建成功"
+                204 -> "无内容（成功）"
+                401 -> "认证失败，请检查用户名和密码"
+                403 -> "禁止访问"
+                404 -> "路径不存在"
+                405 -> "方法不允许"
+                500 -> "服务器内部错误"
+                -1 -> "连接异常，请检查网络"
+                else -> "未知错误"
+            }
+            "服务器响应码: ${WebDAVManager.lastResponseCode}\n说明: $codeDesc\n\n"
+        } else {
+            ""
+        }
+        
+        AlertDialog.Builder(this)
+            .setTitle("连接失败")
+            .setMessage(
+                """
+                $responseCodeInfo
+                连接失败，请检查以下配置：
+                
+                • 服务器地址：完整的 WebDAV URL，例如 https://webdav-1833423170.pd1.123pan.cn/webdav
+                • 用户名和密码：确保正确填写（使用您的123云盘账号）
+                • 网络连接：确保设备可以访问外网
+                
+                远程路径建议改为：/
+                
+                常见 WebDAV 配置：
+                • 您的123云盘：https://webdav-1833423170.pd1.123pan.cn/webdav
+                • 普通123云盘：https://webdav.123pan.cn/webdav
+                • 坚果云：https://dav.jianguoyun.com/dav
+                
+                建议：
+                1. 先尝试把远程路径改为 "/"
+                2. 确认 123云盘 已开启 WebDAV 功能（在设置中）
+                3. 检查账号是否是 123云盘 的主账号
+                4. 尝试关闭 VPN 再测试
+                """.trimIndent()
+            )
+            .setPositiveButton("确定", null)
+            .show()
     }
     
     private fun saveWebDAVConfig() {
@@ -184,15 +260,22 @@ class SettingsActivity : AppCompatActivity() {
         val serverUrl = binding.etWebDAVServer.text?.toString()?.trim()
         val username = binding.etWebDAVUsername.text?.toString()?.trim()
         val password = binding.etWebDAVPassword.text?.toString()
-        val remotePath = binding.etWebDAVPath.text?.toString()?.trim() ?: "/overtime_record/"
+        val remotePath = binding.etWebDAVPath.text?.toString()?.trim() ?: "/"
         
         if (serverUrl.isNullOrEmpty() || username.isNullOrEmpty() || password.isNullOrEmpty()) {
             Toast.makeText(this, "请填写完整的WebDAV配置信息", Toast.LENGTH_SHORT).show()
             return null
         }
         
+        // 自动添加 https:// 如果没有协议
+        val normalizedServerUrl = if (!serverUrl.startsWith("http://") && !serverUrl.startsWith("https://")) {
+            "https://$serverUrl"
+        } else {
+            serverUrl
+        }
+        
         return WebDAVConfig(
-            serverUrl = serverUrl,
+            serverUrl = normalizedServerUrl,
             username = username,
             password = password,
             remotePath = remotePath

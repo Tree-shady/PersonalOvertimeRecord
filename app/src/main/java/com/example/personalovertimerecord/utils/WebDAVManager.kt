@@ -28,38 +28,83 @@ class WebDAVManager(private val context: Context) {
 
     companion object {
         private const val DEFAULT_BACKUP_FILENAME = "overtime_backup.json"
-        private const val CONNECTION_TIMEOUT_MS = 30000
-        private const val READ_TIMEOUT_MS = 30000
+        private const val CONNECTION_TIMEOUT_MS = 60000
+        private const val READ_TIMEOUT_MS = 60000
         private const val DATE_FORMAT_PATTERN = "EEE, dd MMM yyyy HH:mm:ss zzz"
+        
+        var lastResponseCode: Int = 0
     }
 
     private val backupFileName = DEFAULT_BACKUP_FILENAME
 
     /**
-     * 测试 WebDAV 连接
+     * 测试 WebDAV 连接（简化版，使用 PUT 简单测试）
      */
     suspend fun testConnection(config: WebDAVConfig): Boolean = withContext(Dispatchers.IO) {
+        var connection: HttpURLConnection? = null
         try {
-            val dirUrl = buildUrl(config.serverUrl, config.remotePath)
+            val testFileUrl = buildUrl(config.serverUrl, config.remotePath, ".test_connection")
             
-            // 先尝试创建目录
-            createDirIfNotExists(dirUrl, config)
+            AppLogger.d("WebDAV 测试连接: $testFileUrl")
             
-            // 检查是否可以访问
-            executeRequest(
-                url = dirUrl,
-                method = "PROPFIND",
-                config = config,
-                setup = { connection ->
-                    connection.setRequestProperty("Depth", "0")
-                },
-                handleResponse = { connection ->
-                    connection.responseCode in 200..299
-                }
-            )
+            val urlObj = URL(testFileUrl)
+            connection = urlObj.openConnection() as HttpURLConnection
+            
+            // 设置基本属性
+            connection.requestMethod = "PUT"
+            connection.setRequestProperty("Authorization", getBasicAuth(config.username, config.password))
+            connection.setRequestProperty("User-Agent", "Android-WebDAV-Client/1.0")
+            connection.setRequestProperty("Content-Type", "text/plain")
+            connection.connectTimeout = CONNECTION_TIMEOUT_MS
+            connection.readTimeout = READ_TIMEOUT_MS
+            connection.instanceFollowRedirects = true
+            connection.doOutput = true
+            
+            // 写入空内容
+            DataOutputStream(connection.outputStream).use { it.write("".toByteArray(Charsets.UTF_8)) }
+            
+            val responseCode = connection.responseCode
+            lastResponseCode = responseCode
+            AppLogger.d("WebDAV 测试响应码: $responseCode")
+            
+            // 检查响应码，200-299 都表示成功
+            val success = responseCode in 200..299
+            
+            // 测试成功后尝试删除测试文件
+            if (success) {
+                tryDeleteFile(testFileUrl, config)
+            }
+            
+            success
         } catch (e: Exception) {
             AppLogger.e("WebDAV连接测试失败", e)
+            lastResponseCode = -1
             false
+        } finally {
+            connection?.disconnect()
+        }
+    }
+
+    /**
+     * 尝试删除文件（忽略错误）
+     */
+    private fun tryDeleteFile(fileUrl: String, config: WebDAVConfig) {
+        var connection: HttpURLConnection? = null
+        try {
+            val urlObj = URL(fileUrl)
+            connection = urlObj.openConnection() as HttpURLConnection
+            connection.requestMethod = "DELETE"
+            connection.setRequestProperty("Authorization", getBasicAuth(config.username, config.password))
+            connection.setRequestProperty("User-Agent", "Android-WebDAV-Client/1.0")
+            connection.connectTimeout = CONNECTION_TIMEOUT_MS
+            connection.readTimeout = READ_TIMEOUT_MS
+            
+            val responseCode = connection.responseCode
+            AppLogger.d("删除测试文件响应: $responseCode")
+        } catch (e: Exception) {
+            AppLogger.d("删除测试文件失败，但不影响连接测试: ${e.message}")
+        } finally {
+            connection?.disconnect()
         }
     }
 
@@ -68,13 +113,13 @@ class WebDAVManager(private val context: Context) {
      */
     suspend fun uploadFile(config: WebDAVConfig, content: String): Boolean = withContext(Dispatchers.IO) {
         try {
-            val dirUrl = buildUrl(config.serverUrl, config.remotePath)
             val fileUrl = buildUrl(config.serverUrl, config.remotePath, backupFileName)
             
-            // 确保目录存在
-            createDirIfNotExists(dirUrl, config)
+            AppLogger.d("WebDAV 上传文件: $fileUrl")
             
-            // 上传文件
+            // 确保目录存在
+            ensureDirectoryExists(config)
+            
             executeRequest(
                 url = fileUrl,
                 method = "PUT",
@@ -103,16 +148,47 @@ class WebDAVManager(private val context: Context) {
     }
 
     /**
+     * 确保目录存在
+     */
+    private suspend fun ensureDirectoryExists(config: WebDAVConfig) {
+        val dirUrl = buildUrl(config.serverUrl, config.remotePath)
+        AppLogger.d("确保目录存在: $dirUrl")
+        
+        try {
+            // 尝试 MKCOL 创建目录，大多数服务会忽略已存在的目录
+            executeRequest(
+                url = dirUrl,
+                method = "MKCOL",
+                config = config,
+                setup = { connection ->
+                    connection.setRequestProperty("Content-Type", "text/xml")
+                },
+                handleResponse = { connection ->
+                    AppLogger.d("MKCOL 响应: ${connection.responseCode}")
+                    true
+                }
+            )
+        } catch (e: Exception) {
+            AppLogger.d("创建目录失败（可能已存在）: ${e.message}")
+        }
+    }
+
+    /**
      * 从 WebDAV 下载文件
      */
     suspend fun downloadFile(config: WebDAVConfig): String? = withContext(Dispatchers.IO) {
         try {
             val fileUrl = buildUrl(config.serverUrl, config.remotePath, backupFileName)
             
+            AppLogger.d("WebDAV 下载文件: $fileUrl")
+            
             executeRequest(
                 url = fileUrl,
                 method = "GET",
                 config = config,
+                setup = { connection ->
+                    connection.setRequestProperty("Accept", "*/*")
+                },
                 handleResponse = { connection ->
                     if (connection.responseCode in 200..299) {
                         val content = BufferedReader(InputStreamReader(connection.inputStream, Charsets.UTF_8)).use { it.readText() }
@@ -141,6 +217,9 @@ class WebDAVManager(private val context: Context) {
                 url = fileUrl,
                 method = "HEAD",
                 config = config,
+                setup = { connection ->
+                    connection.setRequestProperty("Accept", "*/*")
+                },
                 handleResponse = { connection ->
                     if (connection.responseCode in 200..299) {
                         val lastModified = connection.getHeaderField("Last-Modified")
@@ -164,40 +243,6 @@ class WebDAVManager(private val context: Context) {
     }
 
     /**
-     * 如果目录不存在则创建
-     */
-    private suspend fun createDirIfNotExists(dirUrl: String, config: WebDAVConfig) = withContext(Dispatchers.IO) {
-        try {
-            // 检查目录是否存在
-            val exists = executeRequest(
-                url = dirUrl,
-                method = "PROPFIND",
-                config = config,
-                setup = { connection ->
-                    connection.setRequestProperty("Depth", "0")
-                },
-                handleResponse = { connection ->
-                    connection.responseCode in 200..299
-                }
-            )
-            
-            if (!exists) {
-                // 目录不存在，创建它
-                executeRequest(
-                    url = dirUrl,
-                    method = "MKCOL",
-                    config = config,
-                    handleResponse = { connection ->
-                        AppLogger.d("WebDAV目录创建状态: ${connection.responseCode}")
-                    }
-                )
-            }
-        } catch (e: Exception) {
-            AppLogger.e("创建WebDAV目录失败", e)
-        }
-    }
-
-    /**
      * 通用的 HTTP 请求执行方法
      */
     private inline fun <T> executeRequest(
@@ -215,8 +260,10 @@ class WebDAVManager(private val context: Context) {
             connection = urlObj.openConnection() as HttpURLConnection
             connection.requestMethod = method
             connection.setRequestProperty("Authorization", getBasicAuth(config.username, config.password))
+            connection.setRequestProperty("User-Agent", "Android-WebDAV-Client/1.0")
             connection.connectTimeout = CONNECTION_TIMEOUT_MS
             connection.readTimeout = READ_TIMEOUT_MS
+            connection.instanceFollowRedirects = true
             
             // 自定义设置
             setup(connection)
@@ -244,17 +291,17 @@ class WebDAVManager(private val context: Context) {
     /**
      * 构建 URL
      */
-    private fun buildUrl(vararg parts: String): String {
-        val urlBuilder = StringBuilder()
-        parts.forEachIndexed { index, part ->
+    private fun buildUrl(baseUrl: String, vararg pathParts: String): String {
+        val cleanBaseUrl = baseUrl.trimEnd('/')
+        val result = StringBuilder(cleanBaseUrl)
+        
+        pathParts.forEach { part ->
             val cleanPart = part.trim('/')
             if (cleanPart.isNotEmpty()) {
-                if (index > 0 && urlBuilder.isNotEmpty() && !urlBuilder.endsWith('/')) {
-                    urlBuilder.append('/')
-                }
-                urlBuilder.append(cleanPart)
+                result.append('/').append(cleanPart)
             }
         }
-        return urlBuilder.toString()
+        
+        return result.toString()
     }
 }
