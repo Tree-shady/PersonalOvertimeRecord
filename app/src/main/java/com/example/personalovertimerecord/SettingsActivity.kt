@@ -1,6 +1,8 @@
 package com.example.personalovertimerecord
 
 import android.os.Bundle
+import android.view.View
+import android.view.ViewTreeObserver
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.example.personalovertimerecord.data.OvertimeSettings
@@ -25,14 +27,35 @@ class SettingsActivity : AppCompatActivity() {
         loadSettings()
         setupButtons()
         setupShiftGroup()
+        setupScrollToFocusedView()
+    }
+    
+    private fun setupScrollToFocusedView() {
+        val rootView = binding.root
+        
+        rootView.viewTreeObserver.addOnGlobalLayoutListener {
+            val rect = android.graphics.Rect()
+            rootView.getWindowVisibleDisplayFrame(rect)
+            val screenHeight = rootView.rootView.height
+            val keypadHeight = screenHeight - rect.bottom
+            
+            if (keypadHeight > screenHeight * 0.15) {
+                val focusedView = currentFocus
+                if (focusedView != null) {
+                    binding.scrollView.post {
+                        binding.scrollView.requestChildFocus(focusedView, focusedView)
+                    }
+                }
+            }
+        }
     }
     
     private fun setupShiftGroup() {
         binding.shiftGroup.setOnCheckedChangeListener { _, checkedId ->
             if (checkedId == R.id.shiftCustom) {
-                binding.customTimeLayout.visibility = android.view.View.VISIBLE
+                binding.customTimeLayout.visibility = View.VISIBLE
             } else {
-                binding.customTimeLayout.visibility = android.view.View.GONE
+                binding.customTimeLayout.visibility = View.GONE
             }
         }
     }
@@ -41,7 +64,7 @@ class SettingsActivity : AppCompatActivity() {
         val currentSettings = settingsManager.getSettings()
         
         binding.shiftGroup.check(R.id.shiftNormal)
-        binding.customTimeLayout.visibility = android.view.View.GONE
+        binding.customTimeLayout.visibility = View.GONE
         
         binding.etWorkStart.setText(currentSettings.workStartTime)
         binding.etWorkEnd.setText(currentSettings.workEndTime)

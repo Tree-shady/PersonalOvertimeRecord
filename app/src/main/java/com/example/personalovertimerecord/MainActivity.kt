@@ -226,6 +226,10 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent(this, ReportActivity::class.java))
         }
         
+        binding.btnData.setOnClickListener {
+            startActivity(Intent(this, DataManagerActivity::class.java))
+        }
+        
         binding.btnCloudSync.visibility = View.GONE
     }
     

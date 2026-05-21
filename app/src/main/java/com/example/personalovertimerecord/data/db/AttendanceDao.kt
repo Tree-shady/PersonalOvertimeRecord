@@ -46,6 +46,12 @@ interface AttendanceDao {
     suspend fun insertAll(records: List<AttendanceEntity>)
 
     /**
+     * 插入单条记录
+     */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(record: AttendanceEntity): Long
+
+    /**
      * 删除记录
      */
     @Delete

@@ -115,6 +115,9 @@ dependencies {
     
     implementation(libs.mpchart)
     
+    // Gson - JSON 序列化/反序列化
+    implementation("com.google.code.gson:gson:2.10.1")
+    
     // Security - Encrypted SharedPreferences
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
     
