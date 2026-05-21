@@ -101,4 +101,14 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
     fun clearError() {
         _errorMessage.value = null
     }
+    
+    fun refreshData() {
+        // 重新初始化数据加载
+        _allAttendance = repository.getAllAttendanceFlow()
+            .catch { e ->
+                AppLogger.e("Error loading attendance data", e)
+                _errorMessage.postValue("加载数据失败，请稍后重试")
+            }
+            .asLiveData()
+    }
 }

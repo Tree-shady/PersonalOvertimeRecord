@@ -125,6 +125,8 @@ dependencies {
     implementation("net.zetetic:android-database-sqlcipher:4.5.4")
     implementation("androidx.sqlite:sqlite-ktx:2.2.0")
     
+    // WebDAV will use built-in HttpURLConnection
+    
     // Firebase dependencies - 已禁用云同步
     // implementation(libs.firebase.auth.ktx)
     // implementation(libs.firebase.firestore.ktx)

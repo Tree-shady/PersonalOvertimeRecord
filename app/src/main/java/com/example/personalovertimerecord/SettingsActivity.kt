@@ -5,14 +5,21 @@ import android.view.View
 import android.view.ViewTreeObserver
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
 import com.example.personalovertimerecord.data.OvertimeSettings
 import com.example.personalovertimerecord.data.SettingsManager
 import com.example.personalovertimerecord.databinding.ActivitySettingsBinding
+import com.example.personalovertimerecord.utils.WebDAVConfig
+import com.example.personalovertimerecord.utils.WebDAVManager
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class SettingsActivity : AppCompatActivity() {
     
     private lateinit var binding: ActivitySettingsBinding
     private lateinit var settingsManager: SettingsManager
+    private lateinit var webDAVManager: WebDAVManager
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -24,7 +31,10 @@ class SettingsActivity : AppCompatActivity() {
         binding.toolbar.setNavigationOnClickListener { finish() }
         
         settingsManager = SettingsManager(this)
+        webDAVManager = WebDAVManager(this)
+        
         loadSettings()
+        loadWebDAVConfig()
         setupButtons()
         setupShiftGroup()
         setupScrollToFocusedView()
@@ -77,9 +87,29 @@ class SettingsActivity : AppCompatActivity() {
         binding.etDailyWorkHours.setText(currentSettings.dailyWorkHours.toString())
     }
     
+    private fun loadWebDAVConfig() {
+        val config = settingsManager.getWebDAVConfig()
+        config?.let {
+            binding.etWebDAVServer.setText(it.serverUrl)
+            binding.etWebDAVUsername.setText(it.username)
+            binding.etWebDAVPassword.setText(it.password)
+            binding.etWebDAVPath.setText(it.remotePath)
+        } ?: run {
+            binding.etWebDAVPath.setText("/overtime_record/")
+        }
+    }
+    
     private fun setupButtons() {
         binding.btnSave.setOnClickListener {
             saveSettings()
+        }
+        
+        binding.btnTestConnection.setOnClickListener {
+            testWebDAVConnection()
+        }
+        
+        binding.btnSaveWebDAV.setOnClickListener {
+            saveWebDAVConfig()
         }
     }
     
@@ -119,6 +149,54 @@ class SettingsActivity : AppCompatActivity() {
         } catch (e: Exception) {
             Toast.makeText(this, "保存失败：${e.message}", Toast.LENGTH_SHORT).show()
         }
+    }
+    
+    private fun testWebDAVConnection() {
+        val config = getCurrentWebDAVConfig() ?: return
+        
+        binding.btnTestConnection.isEnabled = false
+        binding.btnTestConnection.text = "测试中..."
+        
+        lifecycleScope.launch {
+            val success = withContext(Dispatchers.IO) {
+                webDAVManager.testConnection(config)
+            }
+            
+            binding.btnTestConnection.isEnabled = true
+            binding.btnTestConnection.text = "测试连接"
+            
+            if (success) {
+                Toast.makeText(this@SettingsActivity, "连接成功！", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this@SettingsActivity, "连接失败，请检查配置", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+    
+    private fun saveWebDAVConfig() {
+        val config = getCurrentWebDAVConfig() ?: return
+        
+        settingsManager.saveWebDAVConfig(config)
+        Toast.makeText(this, "WebDAV配置已保存", Toast.LENGTH_SHORT).show()
+    }
+    
+    private fun getCurrentWebDAVConfig(): WebDAVConfig? {
+        val serverUrl = binding.etWebDAVServer.text?.toString()?.trim()
+        val username = binding.etWebDAVUsername.text?.toString()?.trim()
+        val password = binding.etWebDAVPassword.text?.toString()
+        val remotePath = binding.etWebDAVPath.text?.toString()?.trim() ?: "/overtime_record/"
+        
+        if (serverUrl.isNullOrEmpty() || username.isNullOrEmpty() || password.isNullOrEmpty()) {
+            Toast.makeText(this, "请填写完整的WebDAV配置信息", Toast.LENGTH_SHORT).show()
+            return null
+        }
+        
+        return WebDAVConfig(
+            serverUrl = serverUrl,
+            username = username,
+            password = password,
+            remotePath = remotePath
+        )
     }
     
     private fun validateInput(

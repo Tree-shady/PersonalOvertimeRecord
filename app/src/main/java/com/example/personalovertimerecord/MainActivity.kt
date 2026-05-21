@@ -2,12 +2,11 @@ package com.example.personalovertimerecord
 
 import android.content.Intent
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.view.View
 import android.view.animation.AnimationUtils
 import android.widget.Toast
 import androidx.activity.viewModels
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -15,11 +14,15 @@ import com.example.personalovertimerecord.adapter.AttendanceAdapter
 import com.example.personalovertimerecord.data.Attendance
 import com.example.personalovertimerecord.data.OvertimeSettings
 import com.example.personalovertimerecord.data.SettingsManager
+import com.example.personalovertimerecord.data.db.AppDatabase
 import com.example.personalovertimerecord.databinding.ActivityMainBinding
 import com.example.personalovertimerecord.dialog.AddOvertimeDialog
 import com.example.personalovertimerecord.utils.DateUtils
 import com.example.personalovertimerecord.utils.Formatter
 import com.example.personalovertimerecord.utils.OvertimeCalculator
+import com.example.personalovertimerecord.utils.SyncDirection
+import com.example.personalovertimerecord.utils.SyncManager
+import com.example.personalovertimerecord.utils.SyncResult
 import com.example.personalovertimerecord.view.CalendarView
 import com.example.personalovertimerecord.viewmodel.AttendanceViewModel
 import kotlinx.coroutines.delay
@@ -37,6 +40,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var adapter: AttendanceAdapter
     private lateinit var settingsManager: SettingsManager
+    private lateinit var syncManager: SyncManager
     private lateinit var calendarView: CalendarView
     private var currentSettings: OvertimeSettings = OvertimeSettings()
     
@@ -50,6 +54,8 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
         
         settingsManager = SettingsManager(this)
+        val database = AppDatabase.getDatabase(this)
+        syncManager = SyncManager(this, settingsManager, database.attendanceDao())
         
         setupCalendar()
         setupRecyclerView()
@@ -230,7 +236,62 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent(this, DataManagerActivity::class.java))
         }
         
-        binding.btnCloudSync.visibility = View.GONE
+        binding.btnCloudSync.setOnClickListener {
+            showSyncDialog()
+        }
+    }
+    
+    private fun showSyncDialog() {
+        val options = arrayOf(
+            "双向同步（推荐）",
+            "仅上传到云端",
+            "仅从云端下载"
+        )
+        
+        AlertDialog.Builder(this)
+            .setTitle("WebDAV 同步")
+            .setItems(options) { _, which ->
+                val direction = when (which) {
+                    0 -> SyncDirection.BIDIRECTIONAL
+                    1 -> SyncDirection.UPLOAD_ONLY
+                    2 -> SyncDirection.DOWNLOAD_ONLY
+                    else -> SyncDirection.BIDIRECTIONAL
+                }
+                performSync(direction)
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+    
+    private fun performSync(direction: SyncDirection) {
+        val progressDialog = AlertDialog.Builder(this)
+            .setTitle("正在同步...")
+            .setCancelable(false)
+            .create()
+        progressDialog.show()
+        
+        lifecycleScope.launch {
+            val result = syncManager.performSync(direction)
+            
+            progressDialog.dismiss()
+            
+            val message = when (result) {
+                SyncResult.SUCCESS -> "同步成功！"
+                SyncResult.NO_CONFIG -> "请先在设置中配置 WebDAV"
+                SyncResult.CONNECTION_FAILED -> "连接失败，请检查网络和配置"
+                SyncResult.UPLOAD_FAILED -> "上传失败"
+                SyncResult.DOWNLOAD_FAILED -> "下载失败"
+                SyncResult.RESTORE_FAILED -> "恢复数据失败"
+                SyncResult.NO_CHANGES -> "没有需要同步的更改"
+                SyncResult.CONFLICT -> "存在数据冲突，请手动处理"
+            }
+            
+            Toast.makeText(this@MainActivity, message, Toast.LENGTH_SHORT).show()
+            
+            if (result == SyncResult.SUCCESS) {
+                viewModel.refreshData()
+            }
+        }
     }
     
     private fun observeViewModel() {
