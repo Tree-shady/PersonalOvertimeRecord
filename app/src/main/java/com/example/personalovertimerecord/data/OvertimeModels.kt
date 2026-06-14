@@ -25,7 +25,12 @@ data class OvertimeSettings(
     var overtimeRateWeekend: Double = 2.0,
     var overtimeRateHoliday: Double = 3.0,
     var workStartTime: String = "08:00",
-    var workEndTime: String = "17:00"
+    var workEndTime: String = "17:00",
+    // 加密相关设置
+    var exportEncryptionEnabled: Boolean = false,
+    var exportPassword: String = "",
+    var syncEncryptionEnabled: Boolean = false,
+    var syncPassword: String = ""
 )
 
 data class OvertimeResult(

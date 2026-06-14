@@ -23,12 +23,14 @@ object CsvExporter {
      * @param context 上下文
      * @param records 考勤记录列表
      * @param settings 考勤设置
-     * @return 生成的CSV文件
+     * @param password 加密密码（可选，为空则不加密）
+     * @return 生成的CSV文件（加密时返回加密文件）
      */
     fun exportToCsv(
         context: Context,
         records: List<OvertimeRecord>,
-        settings: OvertimeSettings
+        settings: OvertimeSettings,
+        password: String? = null
     ): File {
         val fileName = "考勤记录_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())}.csv"
         val file = File(context.getExternalFilesDir(null), fileName)
@@ -97,6 +99,14 @@ object CsvExporter {
             writer.write("\n生成时间,$generateTime\n")
         }
         
+        // 如果设置了密码，加密文件
+        if (!password.isNullOrBlank()) {
+            val encryptedFile = File(context.getExternalFilesDir(null), "$fileName.enc")
+            EncryptionUtils.encryptFile(file.path, encryptedFile.path, password)
+            file.delete() // 删除原始文件
+            return encryptedFile
+        }
+        
         return file
     }
     
@@ -107,6 +117,7 @@ object CsvExporter {
      * @param month 月份
      * @param records 考勤记录列表
      * @param settings 考勤设置
+     * @param password 加密密码（可选，为空则不加密）
      * @return 生成的CSV文件
      */
     fun exportMonthlySummary(
@@ -114,7 +125,8 @@ object CsvExporter {
         year: Int,
         month: Int,
         records: List<OvertimeRecord>,
-        settings: OvertimeSettings
+        settings: OvertimeSettings,
+        password: String? = null
     ): File {
         val fileName = "${year}年${month}月考勤汇总_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())}.csv"
         val file = File(context.getExternalFilesDir(null), fileName)
@@ -191,6 +203,14 @@ object CsvExporter {
             // 写入生成时间
             val generateTime = SimpleDateFormat("yyyy年MM月dd日 HH:mm:ss", Locale.getDefault()).format(Date())
             writer.write("\n生成时间,$generateTime\n")
+        }
+        
+        // 如果设置了密码，加密文件
+        if (!password.isNullOrBlank()) {
+            val encryptedFile = File(context.getExternalFilesDir(null), "$fileName.enc")
+            EncryptionUtils.encryptFile(file.path, encryptedFile.path, password)
+            file.delete() // 删除原始文件
+            return encryptedFile
         }
         
         return file

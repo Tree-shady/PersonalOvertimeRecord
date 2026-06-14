@@ -54,6 +54,7 @@ class SettingsActivity : AppCompatActivity() {
         setupThemeGroup()
         setupReminder()
         setupAutoSync()
+        setupEncryption()
         setupButtons()
         setupShiftGroup()
         setupScrollToFocusedView()
@@ -242,6 +243,42 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
     
+    private fun setupEncryption() {
+        val currentSettings = settingsManager.getSettings()
+        
+        // 导出加密开关
+        binding.switchExportEncryption.isChecked = currentSettings.exportEncryptionEnabled
+        updateExportPasswordVisibility()
+        
+        // 同步加密开关
+        binding.switchSyncEncryption.isChecked = currentSettings.syncEncryptionEnabled
+        updateSyncPasswordVisibility()
+        
+        // 设置密码
+        binding.etExportPassword.setText(currentSettings.exportPassword)
+        binding.etSyncPassword.setText(currentSettings.syncPassword)
+        
+        // 导出加密开关监听
+        binding.switchExportEncryption.setOnCheckedChangeListener { _, isChecked ->
+            updateExportPasswordVisibility()
+            Toast.makeText(this, if (isChecked) "已启用导出加密" else "已禁用导出加密", Toast.LENGTH_SHORT).show()
+        }
+        
+        // 同步加密开关监听
+        binding.switchSyncEncryption.setOnCheckedChangeListener { _, isChecked ->
+            updateSyncPasswordVisibility()
+            Toast.makeText(this, if (isChecked) "已启用同步加密" else "已禁用同步加密", Toast.LENGTH_SHORT).show()
+        }
+    }
+    
+    private fun updateExportPasswordVisibility() {
+        binding.exportPasswordLayout.visibility = if (binding.switchExportEncryption.isChecked) View.VISIBLE else View.GONE
+    }
+    
+    private fun updateSyncPasswordVisibility() {
+        binding.syncPasswordLayout.visibility = if (binding.switchSyncEncryption.isChecked) View.VISIBLE else View.GONE
+    }
+    
     private fun setupScrollToFocusedView() {
         val rootView = binding.root
         
@@ -341,7 +378,12 @@ class SettingsActivity : AppCompatActivity() {
                 baseSalary = baseSalary,
                 performancePercent = performancePercent,
                 monthlyWorkDays = monthlyWorkDays,
-                dailyWorkHours = dailyWorkHours
+                dailyWorkHours = dailyWorkHours,
+                // 加密设置
+                exportEncryptionEnabled = binding.switchExportEncryption.isChecked,
+                exportPassword = binding.etExportPassword.text?.toString() ?: "",
+                syncEncryptionEnabled = binding.switchSyncEncryption.isChecked,
+                syncPassword = binding.etSyncPassword.text?.toString() ?: ""
             )
             
             settingsManager.saveSettings(settings)

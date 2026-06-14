@@ -75,8 +75,16 @@ class SyncManager(
      */
     private suspend fun uploadBackup(config: WebDAVConfig, options: SyncOptions): SyncResult {
         return try {
+            // 获取加密设置
+            val settings = settingsManager.getSettings()
+            val encryptPassword = if (settings.syncEncryptionEnabled && settings.syncPassword.isNotBlank()) {
+                settings.syncPassword
+            } else {
+                null
+            }
+            
             // 检查云端是否有现有数据
-            val cloudContent = webDAVManager.downloadFile(config)
+            val cloudContent = webDAVManager.downloadFile(config, encryptPassword)
             
             var recordsToUpload: List<AttendanceEntityBackup>
             var cloudRecords: List<AttendanceEntityBackup> = emptyList()
@@ -121,8 +129,8 @@ class SyncManager(
                 }
             }
             
-            val settings = if (options.syncSettings) {
-                settingsManager.getSettings()
+            val syncSettings = if (options.syncSettings) {
+                settings
             } else {
                 null
             }
@@ -130,16 +138,16 @@ class SyncManager(
             val backupData = BackupData(
                 version = SYNC_DATA_VERSION,
                 exportTime = System.currentTimeMillis(),
-                settings = settings ?: settingsManager.getSettings(),
+                settings = syncSettings ?: settings,
                 attendanceRecords = recordsToUpload
             )
 
             val content = gson.toJson(backupData)
-            val success = webDAVManager.uploadFile(config, content)
+            val success = webDAVManager.uploadFile(config, content, encryptPassword)
             
             if (success) {
                 settingsManager.saveLastSyncTime(System.currentTimeMillis())
-                AppLogger.d("上传成功，共 ${recordsToUpload.size} 条记录")
+                AppLogger.d("上传成功，共 ${recordsToUpload.size} 条记录" + if (encryptPassword != null) " (已加密)" else " (未加密)")
                 SyncResult.SUCCESS
             } else {
                 SyncResult.UPLOAD_FAILED
@@ -152,10 +160,30 @@ class SyncManager(
 
     /**
      * 从 WebDAV 下载并恢复数据
+     * 兼容处理：如果启用了加密但下载的是旧版本未加密数据，自动尝试不使用密码
      */
     private suspend fun downloadAndRestore(config: WebDAVConfig, options: SyncOptions): SyncResult {
         return try {
-            val content = webDAVManager.downloadFile(config) ?: return SyncResult.DOWNLOAD_FAILED
+            // 获取加密设置
+            val settings = settingsManager.getSettings()
+            val decryptPassword = if (settings.syncEncryptionEnabled && settings.syncPassword.isNotBlank()) {
+                settings.syncPassword
+            } else {
+                null
+            }
+            
+            // 首先尝试用密码下载并解密
+            var content = webDAVManager.downloadFile(config, decryptPassword)
+            
+            // 如果解密失败（可能云端是旧版本未加密数据），尝试不用密码下载
+            if (content == null && decryptPassword != null) {
+                AppLogger.d("使用密码下载失败，尝试不使用密码下载（旧版本兼容）")
+                content = webDAVManager.downloadFile(config, null)
+            }
+            
+            if (content == null) {
+                return SyncResult.DOWNLOAD_FAILED
+            }
             
             val type = object : TypeToken<BackupData>() {}.type
             val backupData: BackupData = gson.fromJson(content, type)
@@ -176,7 +204,7 @@ class SyncManager(
             }
             
             settingsManager.saveLastSyncTime(System.currentTimeMillis())
-            AppLogger.d("下载恢复成功，共 ${backupData.attendanceRecords.size} 条记录")
+            AppLogger.d("下载恢复成功，共 ${backupData.attendanceRecords.size} 条记录" + if (decryptPassword != null && content != null) " (已解密)" else " (未加密)")
             SyncResult.SUCCESS
         } catch (e: Exception) {
             AppLogger.e("下载并恢复失败", e)
@@ -189,13 +217,27 @@ class SyncManager(
      * 策略：先获取云端数据，然后进行智能合并
      */
     private suspend fun performBidirectionalSync(config: WebDAVConfig, options: SyncOptions): SyncResult {
+        // 获取加密设置
+        val settings = settingsManager.getSettings()
+        val encryptPassword = if (settings.syncEncryptionEnabled && settings.syncPassword.isNotBlank()) {
+            settings.syncPassword
+        } else {
+            null
+        }
+        
         val lastSyncTime = settingsManager.getLastSyncTime()
         val remoteModifiedTime = webDAVManager.getFileModifiedTime(config)
         
         AppLogger.d("双向同步开始 - 本地最后同步时间: $lastSyncTime, 云端修改时间: $remoteModifiedTime")
         
         // 获取云端数据
-        val cloudContent = webDAVManager.downloadFile(config)
+        var cloudContent = webDAVManager.downloadFile(config, encryptPassword)
+        
+        // 如果解密失败，尝试不使用密码下载（兼容旧版本）
+        if (cloudContent == null && encryptPassword != null) {
+            AppLogger.d("使用密码下载失败，尝试不使用密码下载（旧版本兼容）")
+            cloudContent = webDAVManager.downloadFile(config, null)
+        }
         
         return when {
             // 情况1：云端没有数据，直接上传本地数据
@@ -232,9 +274,26 @@ class SyncManager(
      */
     private suspend fun performSmartMerge(config: WebDAVConfig, options: SyncOptions): SyncResult {
         return try {
+            // 获取加密设置
+            val settings = settingsManager.getSettings()
+            val encryptPassword = if (settings.syncEncryptionEnabled && settings.syncPassword.isNotBlank()) {
+                settings.syncPassword
+            } else {
+                null
+            }
+            
             // 下载云端数据
-            val cloudContent = webDAVManager.downloadFile(config) 
-                ?: return SyncResult.DOWNLOAD_FAILED
+            var cloudContent = webDAVManager.downloadFile(config, encryptPassword)
+            
+            // 如果解密失败，尝试不使用密码下载（兼容旧版本）
+            if (cloudContent == null && encryptPassword != null) {
+                AppLogger.d("使用密码下载失败，尝试不使用密码下载（旧版本兼容）")
+                cloudContent = webDAVManager.downloadFile(config, null)
+            }
+            
+            if (cloudContent == null) {
+                return SyncResult.DOWNLOAD_FAILED
+            }
             
             val type = object : TypeToken<BackupData>() {}.type
             val cloudBackup: BackupData = gson.fromJson(cloudContent, type)
@@ -281,7 +340,7 @@ class SyncManager(
                 }
             }
             
-            // 上传合并结果
+            // 上传合并结果（使用加密）
             val mergedBackup = BackupData(
                 version = SYNC_DATA_VERSION,
                 exportTime = System.currentTimeMillis(),
@@ -290,7 +349,7 @@ class SyncManager(
             )
             
             val content = gson.toJson(mergedBackup)
-            val success = webDAVManager.uploadFile(config, content)
+            val success = webDAVManager.uploadFile(config, content, encryptPassword)
             
             if (success) {
                 // 如果设置了本地优先，重新应用本地数据到数据库
@@ -300,7 +359,7 @@ class SyncManager(
                 }
                 
                 settingsManager.saveLastSyncTime(System.currentTimeMillis())
-                AppLogger.d("智能合并成功，共 ${mergedRecords.size} 条记录")
+                AppLogger.d("智能合并成功，共 ${mergedRecords.size} 条记录" + if (encryptPassword != null) " (已加密)" else " (未加密)")
                 SyncResult.SUCCESS
             } else {
                 SyncResult.UPLOAD_FAILED

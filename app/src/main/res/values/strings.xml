@@ -82,4 +82,27 @@
     <string name="settings">设置</string>
     <string name="report">报表</string>
     <string name="cloud_sync">云同步</string>
+    
+    <!-- Splash Screen POST Messages -->
+    <string name="post_core">[QUANTUM CORE]</string>
+    <string name="post_link">[MEMORY ARBITER]</string>
+    <string name="post_data">[GPU ENGINE]</string>
+    <string name="post_security">[DATA VAULT]</string>
+    <string name="post_sync">[NET LATENCY]</string>
+    <string name="post_final">[SECURITY MATRIX]</string>
+    <string name="post_ok"> [OK]\n</string>
+    <string name="post_warn"> [!!]\n</string>
+    
+    <!-- Splash Screen Status Messages -->
+    <string name="status_quantum">INITIALIZING QUANTUM CORE...</string>
+    <string name="status_memory">ALLOCATING MEMORY...</string>
+    <string name="status_gpu">CALIBRATING GPU ENGINE...</string>
+    <string name="status_data">VERIFYING DATA VAULT...</string>
+    <string name="status_network">MEASURING NETWORK...</string>
+    <string name="status_security">SCANNING SECURITY...</string>
+    <string name="status_sync">CONNECTING TO SYNC...</string>
+    <string name="status_time">SYNCHRONIZING TIME...</string>
+    <string name="status_permission">GRANTING PERMISSIONS...</string>
+    <string name="status_finalizing">FINALIZING...</string>
+    <string name="status_complete">SYSTEM READY</string>
 </resources>

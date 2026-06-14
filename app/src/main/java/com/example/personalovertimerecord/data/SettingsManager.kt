@@ -20,6 +20,11 @@ class SettingsManager(context: Context) {
             putString(KEY_PERFORMANCE_PERCENT, settings.performancePercent.toString())
             putString(KEY_MONTHLY_WORK_DAYS, settings.monthlyWorkDays.toString())
             putString(KEY_DAILY_WORK_HOURS, settings.dailyWorkHours.toString())
+            // 保存加密设置
+            putBoolean(KEY_EXPORT_ENCRYPTION_ENABLED, settings.exportEncryptionEnabled)
+            putString(KEY_EXPORT_PASSWORD, settings.exportPassword)
+            putBoolean(KEY_SYNC_ENCRYPTION_ENABLED, settings.syncEncryptionEnabled)
+            putString(KEY_SYNC_PASSWORD, settings.syncPassword)
             apply()
         }
     }
@@ -34,7 +39,12 @@ class SettingsManager(context: Context) {
             baseSalary = prefs.getString(KEY_BASE_SALARY, "5000.0")?.toDoubleOrNull() ?: 5000.0,
             performancePercent = prefs.getString(KEY_PERFORMANCE_PERCENT, "0.0")?.toDoubleOrNull() ?: 0.0,
             monthlyWorkDays = prefs.getString(KEY_MONTHLY_WORK_DAYS, "21.75")?.toDoubleOrNull() ?: 21.75,
-            dailyWorkHours = prefs.getString(KEY_DAILY_WORK_HOURS, "8.0")?.toDoubleOrNull() ?: 8.0
+            dailyWorkHours = prefs.getString(KEY_DAILY_WORK_HOURS, "8.0")?.toDoubleOrNull() ?: 8.0,
+            // 读取加密设置
+            exportEncryptionEnabled = prefs.getBoolean(KEY_EXPORT_ENCRYPTION_ENABLED, false),
+            exportPassword = prefs.getString(KEY_EXPORT_PASSWORD, "") ?: "",
+            syncEncryptionEnabled = prefs.getBoolean(KEY_SYNC_ENCRYPTION_ENABLED, false),
+            syncPassword = prefs.getString(KEY_SYNC_PASSWORD, "") ?: ""
         )
     }
 
@@ -86,5 +96,10 @@ class SettingsManager(context: Context) {
         private const val KEY_WEBDAV_PASSWORD = "webdav_password"
         private const val KEY_WEBDAV_REMOTE_PATH = "webdav_remote_path"
         private const val KEY_LAST_SYNC_TIME = "last_sync_time"
+        // 加密设置键
+        private const val KEY_EXPORT_ENCRYPTION_ENABLED = "export_encryption_enabled"
+        private const val KEY_EXPORT_PASSWORD = "export_password"
+        private const val KEY_SYNC_ENCRYPTION_ENABLED = "sync_encryption_enabled"
+        private const val KEY_SYNC_PASSWORD = "sync_password"
     }
 }

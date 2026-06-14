@@ -110,9 +110,19 @@ class WebDAVManager(private val context: Context) {
 
     /**
      * 上传文件到 WebDAV
+     * @param config WebDAV配置
+     * @param content 要上传的内容
+     * @param encryptPassword 加密密码（可选，为空则不加密）
      */
-    suspend fun uploadFile(config: WebDAVConfig, content: String): Boolean = withContext(Dispatchers.IO) {
+    suspend fun uploadFile(config: WebDAVConfig, content: String, encryptPassword: String? = null): Boolean = withContext(Dispatchers.IO) {
         try {
+            // 如果设置了密码，先加密内容
+            val uploadContent = if (!encryptPassword.isNullOrBlank()) {
+                EncryptionUtils.encryptString(content, encryptPassword)
+            } else {
+                content
+            }
+            
             val fileUrl = buildUrl(config.serverUrl, config.remotePath, backupFileName)
             
             AppLogger.d("WebDAV 上传文件: $fileUrl")
@@ -129,7 +139,7 @@ class WebDAVManager(private val context: Context) {
                     connection.doOutput = true
                 },
                 writeBody = { outputStream ->
-                    DataOutputStream(outputStream).use { it.write(content.toByteArray(Charsets.UTF_8)) }
+                    DataOutputStream(outputStream).use { it.write(uploadContent.toByteArray(Charsets.UTF_8)) }
                 },
                 handleResponse = { connection ->
                     val success = connection.responseCode in 200..299
@@ -175,8 +185,10 @@ class WebDAVManager(private val context: Context) {
 
     /**
      * 从 WebDAV 下载文件
+     * @param config WebDAV配置
+     * @param decryptPassword 解密密码（可选，为空则不解密）
      */
-    suspend fun downloadFile(config: WebDAVConfig): String? = withContext(Dispatchers.IO) {
+    suspend fun downloadFile(config: WebDAVConfig, decryptPassword: String? = null): String? = withContext(Dispatchers.IO) {
         try {
             val fileUrl = buildUrl(config.serverUrl, config.remotePath, backupFileName)
             
@@ -193,7 +205,17 @@ class WebDAVManager(private val context: Context) {
                     if (connection.responseCode in 200..299) {
                         val content = BufferedReader(InputStreamReader(connection.inputStream, Charsets.UTF_8)).use { it.readText() }
                         AppLogger.d("WebDAV文件下载成功")
-                        content
+                        
+                        if (!decryptPassword.isNullOrBlank()) {
+                            try {
+                                EncryptionUtils.decryptString(content, decryptPassword)
+                            } catch (ex: Exception) {
+                                AppLogger.w("WebDAV", "解密失败，可能数据未加密: ${ex.message}")
+                                content
+                            }
+                        } else {
+                            content
+                        }
                     } else {
                         AppLogger.e("WebDAV文件不存在或下载失败: ${connection.responseCode}")
                         null
