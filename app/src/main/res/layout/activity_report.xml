@@ -31,7 +31,7 @@
 
         </com.google.android.material.appbar.AppBarLayout>
 
-        <!-- Year Selector -->
+        <!-- Year Selector and Export -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -41,12 +41,23 @@
 
             <TextView
                 android:id="@+id/tvYear"
-                android:layout_width="wrap_content"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
+                android:layout_weight="1"
                 android:text="2024年"
                 android:textSize="20sp"
                 android:textStyle="bold"
                 android:textColor="#333333" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnExport"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="导出报告"
+                android:textSize="14sp"
+                app:icon="@android:drawable/ic_menu_save"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                app:cornerRadius="8dp" />
 
         </LinearLayout>
 

@@ -4,6 +4,7 @@ import android.app.Application
 import com.example.personalovertimerecord.data.db.AppDatabase
 import com.example.personalovertimerecord.repository.AttendanceRepository
 import com.example.personalovertimerecord.repository.RoomAttendanceRepository
+import com.example.personalovertimerecord.utils.ThemeManager
 
 /**
  * 应用全局Application类
@@ -24,6 +25,10 @@ class OvertimeApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        
+        // 初始化主题管理器并应用保存的主题
+        ThemeManager.init(this)
+        ThemeManager.applyTheme()
     }
     
     companion object {

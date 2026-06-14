@@ -1,6 +1,7 @@
 package com.example.personalovertimerecord.utils
 
 import com.example.personalovertimerecord.data.Attendance
+import com.example.personalovertimerecord.data.DayType
 import com.example.personalovertimerecord.data.OvertimeRecord
 import com.example.personalovertimerecord.data.OvertimeResult
 import com.example.personalovertimerecord.data.OvertimeSettings
@@ -11,38 +12,11 @@ object OvertimeCalculator {
         record: OvertimeRecord,
         settings: OvertimeSettings
     ): OvertimeResult {
-        val dayType = HolidayManager.getDayType(record.date)
-        val overtimeHours = record.overtimeHours
-        val extraHours = record.extraHours
-        
-        var normalOvertime = 0.0
-        var weekendOvertime = 0.0
-        var holidayOvertime = 0.0
-        
-        when (dayType) {
-            com.example.personalovertimerecord.data.DayType.HOLIDAY -> {
-                holidayOvertime = overtimeHours
-            }
-            com.example.personalovertimerecord.data.DayType.WEEKEND -> {
-                weekendOvertime = overtimeHours
-            }
-            com.example.personalovertimerecord.data.DayType.WORKDAY -> {
-                normalOvertime = overtimeHours
-            }
-        }
-        
-        val estimatedPay = calculateOvertimePay(
-            normalOvertime, weekendOvertime, holidayOvertime, extraHours, settings
-        )
-        
-        return OvertimeResult(
-            workHours = 0.0,
-            overtimeHours = overtimeHours,
-            normalOvertime = normalOvertime,
-            weekendOvertime = weekendOvertime,
-            holidayOvertime = holidayOvertime,
-            estimatedPay = estimatedPay,
-            extraHours = extraHours
+        return calculateInternal(
+            date = record.date,
+            overtimeHours = record.overtimeHours,
+            extraHours = record.extraHours,
+            settings = settings
         )
     }
     
@@ -53,20 +27,34 @@ object OvertimeCalculator {
         val overtimeHours = if (attendance.manualOvertimeHours >= 0) attendance.manualOvertimeHours else 0.0
         val extraHours = if (attendance.manualExtraHours >= 0) attendance.manualExtraHours else 0.0
         
-        val dayType = HolidayManager.getDayType(attendance.date)
+        return calculateInternal(
+            date = attendance.date,
+            overtimeHours = overtimeHours,
+            extraHours = extraHours,
+            settings = settings
+        )
+    }
+    
+    private fun calculateInternal(
+        date: String,
+        overtimeHours: Double,
+        extraHours: Double,
+        settings: OvertimeSettings
+    ): OvertimeResult {
+        val dayType = HolidayManager.getDayType(date)
         
         var normalOvertime = 0.0
         var weekendOvertime = 0.0
         var holidayOvertime = 0.0
         
         when (dayType) {
-            com.example.personalovertimerecord.data.DayType.HOLIDAY -> {
+            DayType.HOLIDAY -> {
                 holidayOvertime = overtimeHours
             }
-            com.example.personalovertimerecord.data.DayType.WEEKEND -> {
+            DayType.WEEKEND -> {
                 weekendOvertime = overtimeHours
             }
-            com.example.personalovertimerecord.data.DayType.WORKDAY -> {
+            DayType.WORKDAY -> {
                 normalOvertime = overtimeHours
             }
         }

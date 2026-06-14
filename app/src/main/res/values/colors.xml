@@ -8,4 +8,9 @@
     <color name="overtime_color">#FF6200EE</color>
     <color name="money_color">#FFFFC107</color>
     <color name="overtime_info_color">#FFFFFFFF</color>
+    
+    <!-- Terminal Style Colors -->
+    <color name="terminal_background">#FF000000</color>
+    <color name="terminal_green">#FF00FF00</color>
+    <color name="terminal_dim">#FF008800</color>
 </resources>

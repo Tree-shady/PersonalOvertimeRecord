@@ -4,6 +4,7 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     
     <!-- 存储权限 -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" 
@@ -13,6 +14,11 @@
     
     <!-- Android 13+ 通知权限 -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    
+    <!-- 自动同步所需权限 -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <application
         android:name=".OvertimeApplication"
@@ -48,6 +54,35 @@
         <activity
             android:name=".DataManagerActivity"
             android:exported="false" />
+            
+        <!-- FileProvider for sharing files -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+        
+        <!-- Auto Sync Receiver -->
+        <receiver
+            android:name=".utils.AutoSyncReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.example.personalovertimerecord.AUTO_SYNC" />
+            </intent-filter>
+        </receiver>
+        
+        <!-- Reminder Receiver -->
+        <receiver
+            android:name=".utils.ReminderReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.example.personalovertimerecord.REMINDER" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>

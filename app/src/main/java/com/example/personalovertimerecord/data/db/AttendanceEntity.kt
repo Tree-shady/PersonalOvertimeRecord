@@ -19,7 +19,8 @@ data class AttendanceEntity(
     val note: String? = null,
     val manualOvertimeHours: Double = -1.0,
     val manualExtraHours: Double = -1.0,
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    val modifiedAt: Long? = null  // 用于支持增量同步
 ) {
     /**
      * 转换为Attendance数据模型
@@ -43,6 +44,7 @@ data class AttendanceEntity(
          * 从Attendance数据模型创建实体
          */
         fun fromAttendance(attendance: Attendance): AttendanceEntity {
+            val now = System.currentTimeMillis()
             return AttendanceEntity(
                 id = attendance.id,
                 date = attendance.date,
@@ -52,7 +54,8 @@ data class AttendanceEntity(
                 checkOutTimestamp = attendance.checkOutTimestamp,
                 note = attendance.note,
                 manualOvertimeHours = attendance.manualOvertimeHours,
-                manualExtraHours = attendance.manualExtraHours
+                manualExtraHours = attendance.manualExtraHours,
+                modifiedAt = now
             )
         }
     }

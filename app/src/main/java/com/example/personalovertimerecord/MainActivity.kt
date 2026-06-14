@@ -22,6 +22,8 @@ import com.example.personalovertimerecord.utils.Formatter
 import com.example.personalovertimerecord.utils.OvertimeCalculator
 import com.example.personalovertimerecord.utils.SyncDirection
 import com.example.personalovertimerecord.utils.SyncManager
+import com.example.personalovertimerecord.utils.SyncOptions
+import com.example.personalovertimerecord.utils.SyncPresets
 import com.example.personalovertimerecord.utils.SyncResult
 import com.example.personalovertimerecord.view.CalendarView
 import com.example.personalovertimerecord.viewmodel.AttendanceViewModel
@@ -33,7 +35,7 @@ import java.util.Date
 class MainActivity : AppCompatActivity() {
     
     companion object {
-        private const val TIME_UPDATE_INTERVAL = 5000L // 5秒更新一次，减少资源消耗
+        private const val TIME_UPDATE_INTERVAL = 5000L
     }
     
     private val viewModel: AttendanceViewModel by viewModels()
@@ -46,6 +48,8 @@ class MainActivity : AppCompatActivity() {
     
     private var currentYear: Int = Calendar.getInstance().get(Calendar.YEAR)
     private var currentMonth: Int = Calendar.getInstance().get(Calendar.MONTH)
+    
+    private var timeUpdateJob: kotlinx.coroutines.Job? = null
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -71,9 +75,7 @@ class MainActivity : AppCompatActivity() {
         startTimeUpdates()
         currentSettings = settingsManager.getSettings()
         adapter.updateSettings(currentSettings)
-        viewModel.allAttendance.value?.let { attendanceList ->
-            updateMonthlyStats(attendanceList)
-        }
+        viewModel.allAttendance.value?.let { updateMonthlyStats(it) }
     }
     
     override fun onPause() {
@@ -81,7 +83,10 @@ class MainActivity : AppCompatActivity() {
         stopTimeUpdates()
     }
     
-    private var timeUpdateJob: kotlinx.coroutines.Job? = null
+    override fun onDestroy() {
+        super.onDestroy()
+        stopTimeUpdates()
+    }
     
     private fun startTimeUpdates() {
         timeUpdateJob?.cancel()
@@ -98,27 +103,17 @@ class MainActivity : AppCompatActivity() {
         timeUpdateJob = null
     }
     
-    override fun onDestroy() {
-        super.onDestroy()
-        stopTimeUpdates()
-    }
-    
     private fun setupCalendar() {
         calendarView = binding.calendarView
         
         updateMonthYearText()
         
-        binding.btnPrevMonth.setOnClickListener {
-            changeMonth(-1)
-        }
-        
-        binding.btnNextMonth.setOnClickListener {
-            changeMonth(1)
-        }
+        binding.btnPrevMonth.setOnClickListener { changeMonth(-1) }
+        binding.btnNextMonth.setOnClickListener { changeMonth(1) }
         
         calendarView.setOnDateClickListener(object : CalendarView.OnDateClickListener {
             override fun onDateClick(year: Int, month: Int, day: Int) {
-                showAddOvertimeDialog(year, month, day)
+                showAttendanceDialog(year, month, day)
             }
         })
     }
@@ -137,9 +132,11 @@ class MainActivity : AppCompatActivity() {
         }
         updateMonthYearText()
         updateCalendarData()
+        // 切换月份后更新统计数据
+        viewModel.allAttendance.value?.let { updateMonthlyStats(it) }
     }
     
-    private fun showAddOvertimeDialog(year: Int, month: Int, day: Int) {
+    private fun showAttendanceDialog(year: Int, month: Int, day: Int) {
         val dateStr = DateUtils.formatDate(year, month, day)
         val existingAttendance = viewModel.allAttendance.value?.find { it.date == dateStr }
         
@@ -167,14 +164,22 @@ class MainActivity : AppCompatActivity() {
         dialog.show()
     }
     
+    private fun showAttendanceDialog(attendance: Attendance) {
+        val dateParts = DateUtils.extractDateParts(attendance.date)
+        if (dateParts != null) {
+            val (year, month, day) = dateParts
+            showAttendanceDialog(year, month, day)
+        }
+    }
+    
     private fun updateMonthYearText() {
         binding.tvMonthYear.text = "${currentYear}年${currentMonth + 1}月"
         calendarView.setMonth(currentYear, currentMonth)
     }
     
     private fun updateCalendarData() {
-        viewModel.allAttendance.value?.let { attendanceList ->
-            calendarView.setAttendanceData(attendanceList, settingsManager)
+        viewModel.allAttendance.value?.let {
+            calendarView.setAttendanceData(it, settingsManager)
         }
     }
     
@@ -191,36 +196,10 @@ class MainActivity : AppCompatActivity() {
     private fun setupRecyclerView() {
         adapter = AttendanceAdapter(
             settings = currentSettings,
-            onItemClick = { attendance -> showEditDialog(attendance) }
+            onItemClick = { attendance -> showAttendanceDialog(attendance) }
         )
         binding.recyclerView.adapter = adapter
         binding.recyclerView.layoutManager = LinearLayoutManager(this)
-    }
-    
-    private fun showEditDialog(attendance: Attendance) {
-        val dateParts = DateUtils.extractDateParts(attendance.date)
-        if (dateParts != null) {
-            val (year, month, day) = dateParts
-            
-            val dialog = AddOvertimeDialog(
-                context = this,
-                year = year,
-                month = month,
-                day = day,
-                existingAttendance = attendance,
-                onSaveAttendance = { updatedAttendance ->
-                    viewModel.updateAttendance(updatedAttendance)
-                    updateCalendarData()
-                },
-                onDeleteAttendance = { id ->
-                    viewModel.allAttendance.value?.find { it.id == id }?.let {
-                        viewModel.deleteAttendance(it)
-                    }
-                    updateCalendarData()
-                }
-            )
-            dialog.show()
-        }
     }
     
     private fun setupButtons() {
@@ -243,35 +222,41 @@ class MainActivity : AppCompatActivity() {
     
     private fun showSyncDialog() {
         val options = arrayOf(
-            "双向同步（推荐）",
+            "智能双向同步（推荐）",
             "仅上传到云端",
-            "仅从云端下载"
+            "仅从云端下载",
+            "完全覆盖同步"
         )
         
         AlertDialog.Builder(this)
             .setTitle("WebDAV 同步")
             .setItems(options) { _, which ->
-                val direction = when (which) {
-                    0 -> SyncDirection.BIDIRECTIONAL
-                    1 -> SyncDirection.UPLOAD_ONLY
-                    2 -> SyncDirection.DOWNLOAD_ONLY
-                    else -> SyncDirection.BIDIRECTIONAL
+                val (direction, options) = when (which) {
+                    0 -> SyncDirection.BIDIRECTIONAL to SyncPresets.SMART_SYNC
+                    1 -> SyncDirection.UPLOAD_ONLY to SyncPresets.SMART_SYNC
+                    2 -> SyncDirection.DOWNLOAD_ONLY to SyncPresets.SMART_SYNC
+                    3 -> SyncDirection.BIDIRECTIONAL to SyncPresets.FULL_BACKUP
+                    else -> SyncDirection.BIDIRECTIONAL to SyncPresets.SMART_SYNC
                 }
-                performSync(direction)
+                performSync(direction, options)
             }
             .setNegativeButton("取消", null)
             .show()
     }
     
-    private fun performSync(direction: SyncDirection) {
+    private fun performSync(
+        direction: SyncDirection,
+        options: SyncOptions = SyncOptions()
+    ) {
         val progressDialog = AlertDialog.Builder(this)
             .setTitle("正在同步...")
+            .setMessage("请稍候...")
             .setCancelable(false)
             .create()
         progressDialog.show()
         
         lifecycleScope.launch {
-            val result = syncManager.performSync(direction)
+            val result = syncManager.performSync(direction, options)
             
             progressDialog.dismiss()
             
@@ -300,6 +285,7 @@ class MainActivity : AppCompatActivity() {
             adapter.submitList(attendanceList)
             updateCalendarData()
             updateMonthlyStats(attendanceList)
+            updateEmptyState(attendanceList)
         }
         
         viewModel.errorMessage.observe(this) { errorMsg ->
@@ -310,11 +296,29 @@ class MainActivity : AppCompatActivity() {
         }
     }
     
+    private fun updateEmptyState(attendanceList: List<Attendance>) {
+        if (attendanceList.isEmpty()) {
+            binding.recyclerView.visibility = View.GONE
+            binding.emptyStateLayout.visibility = View.VISIBLE
+        } else {
+            binding.recyclerView.visibility = View.VISIBLE
+            binding.emptyStateLayout.visibility = View.GONE
+        }
+    }
+    
     private fun updateMonthlyStats(attendanceList: List<Attendance>) {
         var totalHours = 0.0
         var totalOvertimePay = 0.0
         
-        attendanceList.forEach { attendance ->
+        // 过滤出当前月份的记录
+        val currentMonthRecords = attendanceList.filter { attendance ->
+            val dateParts = DateUtils.extractDateParts(attendance.date)
+            dateParts?.let { (year, month, _) ->
+                year == currentYear && month == currentMonth
+            } ?: false
+        }
+        
+        currentMonthRecords.forEach { attendance ->
             val result = OvertimeCalculator.calculateOvertime(attendance, currentSettings)
             totalHours += result.overtimeHours + result.extraHours
             totalOvertimePay += result.estimatedPay

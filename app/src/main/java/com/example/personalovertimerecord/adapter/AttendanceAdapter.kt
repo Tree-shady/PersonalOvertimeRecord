@@ -5,63 +5,39 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
 import androidx.recyclerview.widget.DiffUtil
+import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.example.personalovertimerecord.R
 import com.example.personalovertimerecord.data.Attendance
 import com.example.personalovertimerecord.data.OvertimeSettings
 import com.example.personalovertimerecord.utils.Formatter
 import com.example.personalovertimerecord.utils.OvertimeCalculator
-import java.util.Locale
 
-/**
- * 考勤记录适配器
- * @param settings 加班设置
- * @param onItemClick 列表项点击回调
- */
 class AttendanceAdapter(
     private var settings: OvertimeSettings = OvertimeSettings(),
     private val onItemClick: (Attendance) -> Unit
-) : RecyclerView.Adapter<AttendanceAdapter.AttendanceViewHolder>() {
+) : ListAdapter<Attendance, AttendanceAdapter.AttendanceViewHolder>(AttendanceDiffCallback()) {
     
-    companion object {
-        private const val EMPTY_VIEW_TYPE = 0
-        private const val ITEM_VIEW_TYPE = 1
-    }
-    
-    private var attendanceList: List<Attendance> = emptyList()
-    
-    /**
-     * 更新设置
-     */
     fun updateSettings(newSettings: OvertimeSettings) {
         settings = newSettings
-        notifyDataSetChanged() // 刷新所有列表项
-    }
-    
-    /**
-     * 提交新的列表数据
-     */
-    fun submitList(list: List<Attendance>) {
-        val sortedList = list.sortedByDescending { it.date }
-        val diffCallback = AttendanceDiffCallback(attendanceList, sortedList)
-        val diffResult = DiffUtil.calculateDiff(diffCallback)
-        
-        attendanceList = sortedList
-        diffResult.dispatchUpdatesTo(this)
+        notifyDataSetChanged()
     }
     
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): AttendanceViewHolder {
-        val view = LayoutInflater.from(parent.context).inflate(R.layout.item_attendance, parent, false)
-        return AttendanceViewHolder(view)
+        val view = LayoutInflater.from(parent.context)
+            .inflate(R.layout.item_attendance, parent, false)
+        return AttendanceViewHolder(view, onItemClick)
     }
     
     override fun onBindViewHolder(holder: AttendanceViewHolder, position: Int) {
-        holder.bind(attendanceList[position])
+        holder.bind(getItem(position), settings)
     }
     
-    override fun getItemCount(): Int = attendanceList.size
-    
-    inner class AttendanceViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+    inner class AttendanceViewHolder(
+        itemView: View,
+        private val onItemClick: (Attendance) -> Unit
+    ) : RecyclerView.ViewHolder(itemView) {
+        
         private val tvDate: TextView = itemView.findViewById(R.id.tvDate)
         private val tvDayType: TextView = itemView.findViewById(R.id.tvDayType)
         private val tvOvertime: TextView = itemView.findViewById(R.id.tvOvertime)
@@ -73,14 +49,14 @@ class AttendanceAdapter(
             itemView.setOnClickListener {
                 val position = bindingAdapterPosition
                 if (position != RecyclerView.NO_POSITION) {
-                    onItemClick(attendanceList[position])
+                    onItemClick(getItem(position))
                 }
             }
             
             itemView.setOnLongClickListener {
                 val position = bindingAdapterPosition
                 if (position != RecyclerView.NO_POSITION) {
-                    onItemClick(attendanceList[position])
+                    onItemClick(getItem(position))
                     true
                 } else {
                     false
@@ -88,7 +64,7 @@ class AttendanceAdapter(
             }
         }
         
-        fun bind(attendance: Attendance) {
+        fun bind(attendance: Attendance, settings: OvertimeSettings) {
             tvDate.text = Formatter.formatDate(attendance.date)
             tvDayType.text = Formatter.getDayTypeString(attendance.date)
             
@@ -107,22 +83,13 @@ class AttendanceAdapter(
         }
     }
     
-    private class AttendanceDiffCallback(
-        private val oldList: List<Attendance>,
-        private val newList: List<Attendance>
-    ) : DiffUtil.Callback() {
+    private class AttendanceDiffCallback : DiffUtil.ItemCallback<Attendance>() {
         
-        override fun getOldListSize(): Int = oldList.size
-        
-        override fun getNewListSize(): Int = newList.size
-        
-        override fun areItemsTheSame(oldItemPosition: Int, newItemPosition: Int): Boolean {
-            return oldList[oldItemPosition].id == newList[newItemPosition].id
+        override fun areItemsTheSame(oldItem: Attendance, newItem: Attendance): Boolean {
+            return oldItem.id == newItem.id
         }
         
-        override fun areContentsTheSame(oldItemPosition: Int, newItemPosition: Int): Boolean {
-            val oldItem = oldList[oldItemPosition]
-            val newItem = newList[newItemPosition]
+        override fun areContentsTheSame(oldItem: Attendance, newItem: Attendance): Boolean {
             return oldItem.date == newItem.date &&
                    oldItem.manualOvertimeHours == newItem.manualOvertimeHours &&
                    oldItem.manualExtraHours == newItem.manualExtraHours &&

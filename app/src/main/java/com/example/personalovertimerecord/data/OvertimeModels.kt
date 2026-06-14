@@ -8,7 +8,12 @@ data class OvertimeRecord(
     val overtimeHours: Double = 0.0,
     val extraHours: Double = 0.0,
     val note: String? = null,
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    // 新增字段
+    val checkInTime: String? = null,
+    val checkOutTime: String? = null,
+    val dayType: String = "平时",
+    val totalPay: Double = 0.0
 )
 
 data class OvertimeSettings(

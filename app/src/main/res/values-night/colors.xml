@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Primary Colors - Dark Theme -->
+    <color name="colorPrimary">#BB86FC</color>
+    <color name="colorPrimaryDark">#3700B3</color>
+    <color name="colorAccent">#03DAC5</color>
+    
+    <!-- App Specific Colors -->
+    <color name="overtime_color">#BB86FC</color>
+    <color name="money_color">#FFD54F</color>
+    <color name="overtime_info_color">#E0E0E0</color>
+    
+    <!-- Background Colors -->
+    <color name="background_primary">#FF121212</color>
+    <color name="background_secondary">#FF1E1E1E</color>
+    <color name="background_card">#FF2D2D2D</color>
+    <color name="surface">#FF1E1E1E</color>
+    
+    <!-- Text Colors -->
+    <color name="text_primary">#FFFFFFFF</color>
+    <color name="text_secondary">#B3FFFFFF</color>
+    <color name="text_hint">#80FFFFFF</color>
+    
+    <!-- Status Bar -->
+    <color name="status_bar">#FF000000</color>
+    
+    <!-- Terminal Style Colors (Keep for Splash) -->
+    <color name="terminal_background">#FF000000</color>
+    <color name="terminal_green">#FF00FF00</color>
+    <color name="terminal_dim">#FF008800</color>
+</resources>

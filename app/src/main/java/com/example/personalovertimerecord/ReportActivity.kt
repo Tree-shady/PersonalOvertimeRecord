@@ -1,16 +1,23 @@
 package com.example.personalovertimerecord
 
+import android.content.Intent
 import android.os.Bundle
-import androidx.appcompat.app.AppCompatActivity
+import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.activity.viewModels
+import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
 import com.example.personalovertimerecord.data.Attendance
 import com.example.personalovertimerecord.data.DayType
+import com.example.personalovertimerecord.data.OvertimeRecord
 import com.example.personalovertimerecord.data.OvertimeSettings
 import com.example.personalovertimerecord.data.SettingsManager
 import com.example.personalovertimerecord.databinding.ActivityReportBinding
+import com.example.personalovertimerecord.utils.CsvExporter
 import com.example.personalovertimerecord.utils.HolidayManager
 import com.example.personalovertimerecord.utils.Formatter
 import com.example.personalovertimerecord.utils.OvertimeCalculator
+import com.example.personalovertimerecord.utils.PdfExporter
 import com.example.personalovertimerecord.utils.SalaryCalculator
 import com.example.personalovertimerecord.viewmodel.AttendanceViewModel
 import com.github.mikephil.charting.data.BarData
@@ -23,6 +30,9 @@ import com.github.mikephil.charting.data.PieData
 import com.github.mikephil.charting.data.PieDataSet
 import com.github.mikephil.charting.data.PieEntry
 import com.github.mikephil.charting.formatter.IndexAxisValueFormatter
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.Calendar
 import java.util.Locale
 
@@ -65,6 +75,118 @@ class ReportActivity : AppCompatActivity() {
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         binding.toolbar.setNavigationOnClickListener { finish() }
         binding.tvYear.text = "${currentYear}年"
+        
+        // 导出按钮点击事件
+        binding.btnExport.setOnClickListener {
+            showExportDialog()
+        }
+    }
+    
+    private fun showExportDialog() {
+        val options = arrayOf("导出为 PDF", "导出为 CSV")
+        
+        AlertDialog.Builder(this)
+            .setTitle("导出报告")
+            .setItems(options) { _, which ->
+                when (which) {
+                    0 -> exportToPdf()
+                    1 -> exportToCsv()
+                }
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+    
+    private fun exportToPdf() {
+        binding.btnExport.isEnabled = false
+        binding.btnExport.text = "导出中..."
+        
+        lifecycleScope.launch {
+            try {
+                val file = withContext(Dispatchers.IO) {
+                    val records = viewModel.allAttendance.value ?: emptyList()
+                    val overtimeRecords = records.map { attendance ->
+                        OvertimeRecord(
+                            id = attendance.id.toString(),
+                            date = attendance.date,
+                            checkInTime = attendance.checkInTime,
+                            checkOutTime = attendance.checkOutTime,
+                            overtimeHours = if (attendance.manualOvertimeHours >= 0) attendance.manualOvertimeHours else 0.0,
+                            extraHours = if (attendance.manualExtraHours >= 0) attendance.manualExtraHours else 0.0,
+                            note = attendance.note,
+                            dayType = HolidayManager.getDayType(attendance.date).name,
+                            totalPay = OvertimeCalculator.calculateOvertime(attendance, settings).estimatedPay
+                        )
+                    }.filter { it.overtimeHours > 0 }
+                    
+                    PdfExporter.exportToPdf(
+                        this@ReportActivity,
+                        overtimeRecords,
+                        settings,
+                        "${currentYear}年考勤报告"
+                    )
+                }
+                
+                Toast.makeText(this@ReportActivity, "PDF导出成功", Toast.LENGTH_SHORT).show()
+                shareFile(file)
+            } catch (e: Exception) {
+                Toast.makeText(this@ReportActivity, "导出失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            } finally {
+                binding.btnExport.isEnabled = true
+                binding.btnExport.text = "导出报告"
+            }
+        }
+    }
+    
+    private fun exportToCsv() {
+        binding.btnExport.isEnabled = false
+        binding.btnExport.text = "导出中..."
+        
+        lifecycleScope.launch {
+            try {
+                val file = withContext(Dispatchers.IO) {
+                    val records = viewModel.allAttendance.value ?: emptyList()
+                    val overtimeRecords = records.map { attendance ->
+                        OvertimeRecord(
+                            id = attendance.id.toString(),
+                            date = attendance.date,
+                            checkInTime = attendance.checkInTime,
+                            checkOutTime = attendance.checkOutTime,
+                            overtimeHours = if (attendance.manualOvertimeHours >= 0) attendance.manualOvertimeHours else 0.0,
+                            extraHours = if (attendance.manualExtraHours >= 0) attendance.manualExtraHours else 0.0,
+                            note = attendance.note,
+                            dayType = HolidayManager.getDayType(attendance.date).name,
+                            totalPay = OvertimeCalculator.calculateOvertime(attendance, settings).estimatedPay
+                        )
+                    }
+                    
+                    CsvExporter.exportMonthlySummary(
+                        this@ReportActivity,
+                        currentYear,
+                        Calendar.getInstance().get(Calendar.MONTH) + 1,
+                        overtimeRecords,
+                        settings
+                    )
+                }
+                
+                Toast.makeText(this@ReportActivity, "CSV导出成功", Toast.LENGTH_SHORT).show()
+                shareFile(file)
+            } catch (e: Exception) {
+                Toast.makeText(this@ReportActivity, "导出失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            } finally {
+                binding.btnExport.isEnabled = true
+                binding.btnExport.text = "导出报告"
+            }
+        }
+    }
+    
+    private fun shareFile(file: java.io.File) {
+        try {
+            val shareIntent = CsvExporter.getShareIntent(this, file)
+            startActivity(Intent.createChooser(shareIntent, "分享文件"))
+        } catch (e: Exception) {
+            Toast.makeText(this, "无法分享文件", Toast.LENGTH_SHORT).show()
+        }
     }
     
     private fun observeViewModel() {

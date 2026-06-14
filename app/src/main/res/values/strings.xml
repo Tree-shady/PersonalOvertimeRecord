@@ -74,6 +74,10 @@
     <string name="weekend">周末</string>
     <string name="holiday">节假日</string>
     
+    <!-- Empty State -->
+    <string name="no_attendance">暂无考勤记录</string>
+    <string name="no_attendance_hint">点击日历上的日期添加加班记录</string>
+    
     <!-- Common -->
     <string name="settings">设置</string>
     <string name="report">报表</string>

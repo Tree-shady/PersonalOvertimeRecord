@@ -130,7 +130,7 @@ class DataManagerActivity : AppCompatActivity() {
         lifecycleScope.launch {
             try {
                 settingsManager.saveSettings(backupData.settings)
-                dataExporter.restoreData(backupData)
+                dataExporter.restoreDataFull(backupData)
                 
                 Toast.makeText(this@DataManagerActivity, "数据恢复成功！", Toast.LENGTH_LONG).show()
                 updateStats()
