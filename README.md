@@ -113,7 +113,8 @@ app/
 ### 环境要求
 
 - Android Studio Hedgehog 或更高版本
-- JDK 17+ (推荐 JDK 21)
+- JDK 17+ (推荐 JDK 21+)
+- Gradle 9.5.1
 - Android SDK 36
 
 ### 构建步骤
@@ -228,6 +229,8 @@ distributionUrl=https://repo.huaweicloud.com/gradle/gradle-8.6-bin.zip
 - 🔒 加密密码不再明文保存，使用加密存储
 - ✨ 新增旧版本未加密数据兼容处理
 - 🛡️ 增强数据安全性验证
+- ⚡ 升级 Gradle 到 9.5.1（最新稳定版）
+- ⚡ 升级项目 Java 版本到 17
 
 ### v1.2.0 (2026-06-14)
 - ✨ 新增科幻风格启动界面
