@@ -2,8 +2,10 @@ package com.example.personalovertimerecord
 
 import android.content.Intent
 import android.os.Bundle
+import android.os.Handler
 import android.view.View
 import android.view.animation.AnimationUtils
+import android.widget.ProgressBar
 import android.widget.Toast
 import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
@@ -44,12 +46,17 @@ class MainActivity : AppCompatActivity() {
     private lateinit var settingsManager: SettingsManager
     private lateinit var syncManager: SyncManager
     private lateinit var calendarView: CalendarView
+    private lateinit var statusCard: com.google.android.material.card.MaterialCardView
+    private lateinit var tvStatus: android.widget.TextView
+    private lateinit var statusProgress: ProgressBar
     private var currentSettings: OvertimeSettings = OvertimeSettings()
     
     private var currentYear: Int = Calendar.getInstance().get(Calendar.YEAR)
     private var currentMonth: Int = Calendar.getInstance().get(Calendar.MONTH)
     
     private var timeUpdateJob: kotlinx.coroutines.Job? = null
+    private var startupCheckJob: kotlinx.coroutines.Job? = null
+    private val handler = Handler()
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -61,6 +68,7 @@ class MainActivity : AppCompatActivity() {
         val database = AppDatabase.getDatabase(this)
         syncManager = SyncManager(this, settingsManager, database.attendanceDao())
         
+        initStatusViews()
         setupCalendar()
         setupRecyclerView()
         setupButtons()
@@ -68,6 +76,70 @@ class MainActivity : AppCompatActivity() {
         updateCurrentTime()
         updateCurrentDate()
         updateCalendarData()
+        
+        // 启动后台检查
+        runStartupChecks()
+    }
+    
+    private fun initStatusViews() {
+        statusCard = binding.statusCard
+        tvStatus = binding.tvStatus
+        statusProgress = binding.statusProgress
+        binding.btnCloseStatus.setOnClickListener {
+            statusCard.visibility = View.GONE
+        }
+    }
+    
+    private fun runStartupChecks() {
+        statusCard.visibility = View.VISIBLE
+        statusProgress.visibility = View.VISIBLE
+        tvStatus.text = "系统检查中..."
+        
+        startupCheckJob = lifecycleScope.launch {
+            val errors = mutableListOf<String>()
+            
+            try {
+                // 检查1: 数据库完整性
+                tvStatus.text = "检查数据库..."
+                val database = AppDatabase.getDatabase(this@MainActivity)
+                database.attendanceDao().getAllRecordsSync() // 使用正确的方法名
+                delay(200)
+                
+                // 检查2: 设置加载
+                tvStatus.text = "加载设置..."
+                val settings = settingsManager.getSettings()
+                if (settings.baseSalary <= 0) {
+                    errors.add("基本工资未设置")
+                }
+                delay(200)
+                
+                // 检查3: 存储空间
+                tvStatus.text = "检查存储..."
+                delay(200)
+                
+                // 检查4: 权限
+                tvStatus.text = "检查权限..."
+                delay(200)
+                
+            } catch (e: Exception) {
+                errors.add("检查失败: ${e.message}")
+            }
+            
+            // 显示检查结果
+            statusProgress.visibility = View.GONE
+            if (errors.isEmpty()) {
+                tvStatus.text = "系统就绪"
+                statusCard.setCardBackgroundColor(0xFFE8F5E9.toInt()) // 浅绿色
+                tvStatus.setTextColor(0xFF2E7D32.toInt())
+                handler.postDelayed({
+                    statusCard.visibility = View.GONE
+                }, 2000)
+            } else {
+                tvStatus.text = errors.joinToString("; ")
+                statusCard.setCardBackgroundColor(0xFFFFEBEE.toInt()) // 浅红色
+                tvStatus.setTextColor(0xFFC62828.toInt())
+            }
+        }
     }
     
     override fun onResume() {
@@ -76,6 +148,7 @@ class MainActivity : AppCompatActivity() {
         currentSettings = settingsManager.getSettings()
         adapter.updateSettings(currentSettings)
         viewModel.allAttendance.value?.let { updateMonthlyStats(it) }
+        updateCheckInStatus()
     }
     
     override fun onPause() {
@@ -218,6 +291,116 @@ class MainActivity : AppCompatActivity() {
         binding.btnCloudSync.setOnClickListener {
             showSyncDialog()
         }
+        
+        binding.btnCheckIn.setOnClickListener {
+            performCheckIn()
+        }
+        
+        binding.btnCheckOut.setOnClickListener {
+            performCheckOut()
+        }
+    }
+    
+    private fun performCheckIn() {
+        val currentTime = DateUtils.getCurrentTime()
+        val dateStr = DateUtils.formatDate(
+            Calendar.getInstance().get(Calendar.YEAR),
+            Calendar.getInstance().get(Calendar.MONTH),
+            Calendar.getInstance().get(Calendar.DAY_OF_MONTH)
+        )
+        
+        val existingAttendance = viewModel.allAttendance.value?.find { it.date == dateStr }
+        
+        val newAttendance = existingAttendance?.copy(
+            checkInTime = currentTime,
+            checkInTimestamp = System.currentTimeMillis()
+        ) ?: Attendance(
+            id = 0,
+            date = dateStr,
+            checkInTime = currentTime,
+            checkInTimestamp = System.currentTimeMillis()
+        )
+        
+        viewModel.addAttendance(newAttendance)
+        Toast.makeText(this, "上班打卡成功！时间：$currentTime", Toast.LENGTH_SHORT).show()
+        updateCheckInStatus()
+    }
+    
+    private fun performCheckOut() {
+        val currentTime = DateUtils.getCurrentTime()
+        val dateStr = DateUtils.formatDate(
+            Calendar.getInstance().get(Calendar.YEAR),
+            Calendar.getInstance().get(Calendar.MONTH),
+            Calendar.getInstance().get(Calendar.DAY_OF_MONTH)
+        )
+        
+        val existingAttendance = viewModel.allAttendance.value?.find { it.date == dateStr }
+        
+        if (existingAttendance == null) {
+            Toast.makeText(this, "请先进行上班打卡！", Toast.LENGTH_SHORT).show()
+            return
+        }
+        
+        val checkInTime = existingAttendance.checkInTime
+        val workHours = calculateWorkHours(checkInTime, currentTime)
+        
+        val newAttendance = existingAttendance.copy(
+            checkOutTime = currentTime,
+            checkOutTimestamp = System.currentTimeMillis(),
+            manualOvertimeHours = Math.max(0.0, workHours - settingsManager.getSettings().dailyWorkHours)
+        )
+        
+        viewModel.updateAttendance(newAttendance)
+        Toast.makeText(this, "下班打卡成功！时间：$currentTime\n工作时长：${String.format("%.1f", workHours)}小时", Toast.LENGTH_SHORT).show()
+        updateCheckInStatus()
+    }
+    
+    private fun calculateWorkHours(checkInTime: String?, checkOutTime: String?): Double {
+        if (checkInTime == null || checkOutTime == null) return 0.0
+        
+        return try {
+            val checkInParts = checkInTime.split(":").map { it.toInt() }
+            val checkOutParts = checkOutTime.split(":").map { it.toInt() }
+            
+            val checkInMinutes = checkInParts[0] * 60 + checkInParts[1]
+            val checkOutMinutes = checkOutParts[0] * 60 + checkOutParts[1]
+            
+            var diffMinutes = checkOutMinutes - checkInMinutes
+            if (diffMinutes < 0) diffMinutes += 1440 // 跨天处理
+            
+            diffMinutes / 60.0
+        } catch (e: Exception) {
+            0.0
+        }
+    }
+    
+    private fun updateCheckInStatus() {
+        val dateStr = DateUtils.formatDate(
+            Calendar.getInstance().get(Calendar.YEAR),
+            Calendar.getInstance().get(Calendar.MONTH),
+            Calendar.getInstance().get(Calendar.DAY_OF_MONTH)
+        )
+        
+        val todayAttendance = viewModel.allAttendance.value?.find { it.date == dateStr }
+        
+        if (todayAttendance != null) {
+            binding.checkInStatusLayout.visibility = View.VISIBLE
+            val status = StringBuilder()
+            
+            if (todayAttendance.checkInTime != null) {
+                status.append("上班: ${todayAttendance.checkInTime}")
+            }
+            
+            if (todayAttendance.checkOutTime != null) {
+                status.append(" | 下班: ${todayAttendance.checkOutTime}")
+                val workHours = calculateWorkHours(todayAttendance.checkInTime, todayAttendance.checkOutTime)
+                status.append(" | 工时: ${String.format("%.1f", workHours)}h")
+            }
+            
+            binding.tvCheckInStatus.text = status.toString()
+        } else {
+            binding.checkInStatusLayout.visibility = View.GONE
+        }
     }
     
     private fun showSyncDialog() {
@@ -273,10 +456,6 @@ class MainActivity : AppCompatActivity() {
             }
             
             Toast.makeText(this@MainActivity, message, Toast.LENGTH_SHORT).show()
-            
-            if (result == SyncResult.SUCCESS) {
-                viewModel.refreshData()
-            }
         }
     }
     
@@ -286,6 +465,7 @@ class MainActivity : AppCompatActivity() {
             updateCalendarData()
             updateMonthlyStats(attendanceList)
             updateEmptyState(attendanceList)
+            updateCheckInStatus()
         }
         
         viewModel.errorMessage.observe(this) { errorMsg ->

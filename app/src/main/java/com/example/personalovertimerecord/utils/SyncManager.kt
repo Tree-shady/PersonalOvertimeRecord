@@ -1,6 +1,7 @@
 package com.example.personalovertimerecord.utils
 
 import android.content.Context
+import com.example.personalovertimerecord.data.OvertimeSettings
 import com.example.personalovertimerecord.data.SettingsManager
 import com.example.personalovertimerecord.data.db.AttendanceDao
 import com.google.gson.Gson
@@ -42,6 +43,15 @@ class SyncManager(
     private val gson = Gson()
 
     /**
+     * 获取加密密码（如果启用了加密）
+     */
+    private fun getEncryptPassword(settings: OvertimeSettings): String? {
+        return if (settings.syncEncryptionEnabled && settings.syncPassword.isNotBlank()) {
+            settings.syncPassword
+        } else null
+    }
+
+    /**
      * 执行同步操作
      */
     suspend fun performSync(
@@ -77,11 +87,7 @@ class SyncManager(
         return try {
             // 获取加密设置
             val settings = settingsManager.getSettings()
-            val encryptPassword = if (settings.syncEncryptionEnabled && settings.syncPassword.isNotBlank()) {
-                settings.syncPassword
-            } else {
-                null
-            }
+            val encryptPassword = getEncryptPassword(settings)
             
             // 检查云端是否有现有数据
             val cloudContent = webDAVManager.downloadFile(config, encryptPassword)
@@ -166,11 +172,7 @@ class SyncManager(
         return try {
             // 获取加密设置
             val settings = settingsManager.getSettings()
-            val decryptPassword = if (settings.syncEncryptionEnabled && settings.syncPassword.isNotBlank()) {
-                settings.syncPassword
-            } else {
-                null
-            }
+            val decryptPassword = getEncryptPassword(settings)
             
             // 首先尝试用密码下载并解密
             var content = webDAVManager.downloadFile(config, decryptPassword)
@@ -219,11 +221,7 @@ class SyncManager(
     private suspend fun performBidirectionalSync(config: WebDAVConfig, options: SyncOptions): SyncResult {
         // 获取加密设置
         val settings = settingsManager.getSettings()
-        val encryptPassword = if (settings.syncEncryptionEnabled && settings.syncPassword.isNotBlank()) {
-            settings.syncPassword
-        } else {
-            null
-        }
+        val encryptPassword = getEncryptPassword(settings)
         
         val lastSyncTime = settingsManager.getLastSyncTime()
         val remoteModifiedTime = webDAVManager.getFileModifiedTime(config)
@@ -276,11 +274,7 @@ class SyncManager(
         return try {
             // 获取加密设置
             val settings = settingsManager.getSettings()
-            val encryptPassword = if (settings.syncEncryptionEnabled && settings.syncPassword.isNotBlank()) {
-                settings.syncPassword
-            } else {
-                null
-            }
+            val encryptPassword = getEncryptPassword(settings)
             
             // 下载云端数据
             var cloudContent = webDAVManager.downloadFile(config, encryptPassword)

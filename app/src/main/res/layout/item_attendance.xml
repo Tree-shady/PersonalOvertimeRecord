@@ -54,6 +54,7 @@
                 android:orientation="vertical">
 
                 <TextView
+                    android:id="@+id/tvOvertimeLabel"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="加班时长"
@@ -73,6 +74,7 @@
             </LinearLayout>
 
             <LinearLayout
+                android:id="@+id/extraLayout"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
@@ -123,6 +125,34 @@
                     android:layout_marginTop="4dp" />
 
             </LinearLayout>
+
+        </LinearLayout>
+
+        <!-- 请假信息显示区域 -->
+        <LinearLayout
+            android:id="@+id/leaveLayout"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="12dp"
+            android:padding="12dp"
+            android:background="#FFF8E1"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="📋 "
+                android:textSize="16sp" />
+
+            <TextView
+                android:id="@+id/tvLeaveInfo"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="年假1天"
+                android:textSize="16sp"
+                android:textColor="#FF9800"
+                android:textStyle="bold" />
 
         </LinearLayout>
 

@@ -30,6 +30,8 @@ class CalendarView @JvmOverloads constructor(
     
     private var attendanceData: Map<String, Attendance> = emptyMap()
     private var settingsManager: SettingsManager? = null
+    // 缓存 settings，避免在 onDraw 中频繁读取 SharedPreferences
+    private var cachedSettings: OvertimeSettings? = null
     
     private val calendar = Calendar.getInstance()
     private var daysInMonth: Int = 0
@@ -118,6 +120,7 @@ class CalendarView @JvmOverloads constructor(
     
     fun setAttendanceData(data: List<Attendance>, manager: SettingsManager) {
         this.settingsManager = manager
+        this.cachedSettings = manager.getSettings()
         attendanceData = data.associateBy { it.date }
         invalidate()
     }
@@ -190,8 +193,8 @@ class CalendarView @JvmOverloads constructor(
             
             // 绘制加班信息
             if (hasData && attendance != null) {
-                // 获取真实设置（与记录列表保持一致）
-                val settings = settingsManager?.getSettings()
+                // 使用缓存的 settings，避免频繁读取 SharedPreferences
+                val settings = cachedSettings
                 val baseSalary = settings?.baseSalary ?: 5000.0
                 val monthlyWorkDays = settings?.monthlyWorkDays ?: 21.75
                 val dailyWorkHours = settings?.dailyWorkHours ?: 8.0

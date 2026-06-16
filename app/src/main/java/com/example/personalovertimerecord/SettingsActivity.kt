@@ -16,6 +16,7 @@ import com.example.personalovertimerecord.databinding.ActivitySettingsBinding
 import com.example.personalovertimerecord.utils.AppLogger
 import com.example.personalovertimerecord.utils.AutoSyncManager
 import com.example.personalovertimerecord.utils.NetworkUtils
+import com.example.personalovertimerecord.utils.BiometricManager
 import com.example.personalovertimerecord.utils.ReminderManager
 import com.example.personalovertimerecord.utils.ThemeManager
 import com.example.personalovertimerecord.utils.ThemeMode
@@ -53,11 +54,33 @@ class SettingsActivity : AppCompatActivity() {
         loadWebDAVConfig()
         setupThemeGroup()
         setupReminder()
+        setupBiometric()
         setupAutoSync()
         setupEncryption()
         setupButtons()
         setupShiftGroup()
         setupScrollToFocusedView()
+    }
+    
+    private fun setupBiometric() {
+        val isSupported = BiometricManager.isBiometricSupported(this)
+        
+        if (!isSupported) {
+            binding.switchBiometric.isEnabled = false
+            binding.switchBiometric.isChecked = false
+            binding.tvBiometricStatus.text = "设备不支持生物识别功能"
+            binding.tvBiometricStatus.setTextColor(android.graphics.Color.GRAY)
+            return
+        }
+        
+        binding.switchBiometric.isChecked = BiometricManager.isBiometricEnabled(this)
+        binding.tvBiometricStatus.text = "已准备就绪（支持指纹/面容解锁）"
+        binding.tvBiometricStatus.setTextColor(android.graphics.Color.GREEN)
+        
+        binding.switchBiometric.setOnCheckedChangeListener { _, isChecked ->
+            BiometricManager.setBiometricEnabled(this, isChecked)
+            Toast.makeText(this, if (isChecked) "已启用生物识别保护" else "已禁用生物识别保护", Toast.LENGTH_SHORT).show()
+        }
     }
     
     private fun setupReminder() {

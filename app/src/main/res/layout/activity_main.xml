@@ -68,6 +68,51 @@
 
     </com.google.android.material.appbar.AppBarLayout>
 
+    <!-- 启动检查状态栏 -->
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/statusCard"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_margin="8dp"
+        android:visibility="gone"
+        app:cardElevation="2dp"
+        app:cardCornerRadius="8dp"
+        app:cardBackgroundColor="#FFF3E0">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:padding="12dp"
+            android:gravity="center_vertical">
+
+            <ProgressBar
+                android:id="@+id/statusProgress"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:layout_marginEnd="12dp" />
+
+            <TextView
+                android:id="@+id/tvStatus"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="系统检查中..."
+                android:textSize="14sp"
+                android:textColor="#E65100" />
+
+            <ImageButton
+                android:id="@+id/btnCloseStatus"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@android:drawable/ic_menu_close_clear_cancel"
+                android:contentDescription="关闭" />
+
+        </LinearLayout>
+
+    </com.google.android.material.card.MaterialCardView>
+
     <ScrollView
         android:layout_width="match_parent"
         android:layout_height="0dp"
@@ -128,6 +173,82 @@
                         android:textStyle="bold"
                         android:textColor="#333333"
                         android:text="00:00:00" />
+
+                </LinearLayout>
+
+            </com.google.android.material.card.MaterialCardView>
+
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                app:cardElevation="3dp"
+                app:cardCornerRadius="12dp"
+                app:cardBackgroundColor="@color/white">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="快捷打卡"
+                        android:textSize="16sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/colorPrimary"
+                        android:layout_marginBottom="12dp" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center">
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnCheckIn"
+                            android:layout_width="120dp"
+                            android:layout_height="56dp"
+                            android:text="上班打卡"
+                            android:textSize="16sp"
+                            android:backgroundTint="@color/colorPrimary"
+                            app:cornerRadius="8dp"
+                            app:icon="@drawable/ic_check_in"
+                            app:iconPadding="8dp"
+                            android:layout_marginEnd="16dp" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnCheckOut"
+                            android:layout_width="120dp"
+                            android:layout_height="56dp"
+                            android:text="下班打卡"
+                            android:textSize="16sp"
+                            android:backgroundTint="@color/colorAccent"
+                            app:cornerRadius="8dp"
+                            app:icon="@drawable/ic_check_out"
+                            app:iconPadding="8dp" />
+
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/checkInStatusLayout"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center"
+                        android:layout_marginTop="12dp"
+                        android:visibility="gone">
+
+                        <TextView
+                            android:id="@+id/tvCheckInStatus"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textSize="14sp"
+                            android:textColor="@android:color/darker_gray" />
+
+                    </LinearLayout>
 
                 </LinearLayout>
 

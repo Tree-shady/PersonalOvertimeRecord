@@ -15,6 +15,7 @@ import android.view.animation.LinearInterpolator
 import android.widget.TextView
 import android.widget.ScrollView
 import androidx.appcompat.app.AppCompatActivity
+import com.example.personalovertimerecord.utils.BiometricManager
 import com.example.personalovertimerecord.utils.PermissionManager
 import kotlin.random.Random
 
@@ -348,7 +349,11 @@ class SplashActivity : AppCompatActivity() {
     private fun tryNavigateToMain() {
         if (isAnimationFinished && isPermissionChecked) {
             glitchAnimator?.cancel()
-            val intent = Intent(this, MainActivity::class.java)
+            val intent = if (BiometricManager.needsAuthentication(this)) {
+                Intent(this, BiometricActivity::class.java)
+            } else {
+                Intent(this, MainActivity::class.java)
+            }
             startActivity(intent)
             overridePendingTransition(R.anim.fade_in, R.anim.fade_out)
             finish()

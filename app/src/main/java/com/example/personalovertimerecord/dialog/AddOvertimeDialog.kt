@@ -12,6 +12,7 @@ import android.widget.TextView
 import android.widget.Toast
 import com.example.personalovertimerecord.R
 import com.example.personalovertimerecord.data.Attendance
+import com.example.personalovertimerecord.data.LeaveType
 import com.example.personalovertimerecord.data.OvertimeRecord
 import java.util.Calendar
 import java.util.Locale
@@ -28,11 +29,32 @@ class AddOvertimeDialog(
     private val onDeleteAttendance: ((Long) -> Unit)? = null
 ) : Dialog(context) {
     
-    private lateinit var etOvertimeHours: EditText
-    private lateinit var etExtraHours: EditText
+    private lateinit var actvOvertimeHours: AutoCompleteTextView
+    private lateinit var actvExtraHours: AutoCompleteTextView
     private lateinit var etNote: EditText
     private lateinit var tvTitle: TextView
     private lateinit var btnDelete: View
+    private lateinit var switchLeave: com.google.android.material.switchmaterial.SwitchMaterial
+    private lateinit var leaveOptionsLayout: View
+    private lateinit var actvLeaveType: AutoCompleteTextView
+    private lateinit var actvLeaveHours: AutoCompleteTextView
+    private var selectedLeaveType: LeaveType = LeaveType.ANNUAL_LEAVE
+    
+    // 加班/加点选项，最大11小时
+    private val hourOptions: List<String> = (1..22).map { "${it * 0.5}" } // 0.5, 1.0, 1.5, ... 11.0
+    
+    // 计算当月剩余天数（用于请假上限）
+    private val maxLeaveDays: Int by lazy {
+        val calendar = Calendar.getInstance()
+        calendar.set(year, month, day)
+        val maxDay = calendar.getActualMaximum(Calendar.DAY_OF_MONTH)
+        maxDay - day + 1 // 包含当天
+    }
+    
+    // 请假选项，根据当月剩余天数动态生成
+    private val leaveDayOptions: List<String> by lazy {
+        (1..maxLeaveDays).map { "${it * 1.0}" } // 1.0, 2.0, 3.0, ... up to remaining days
+    }
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -44,37 +66,101 @@ class AddOvertimeDialog(
         )
         
         initViews()
+        setupHourDropdowns()
+        setupLeaveTypeDropdown()
         setupExistingData()
         setupListeners()
     }
     
     private fun initViews() {
-        etOvertimeHours = findViewById(R.id.etOvertimeHours)
-        etExtraHours = findViewById(R.id.etExtraHours)
+        actvOvertimeHours = findViewById(R.id.actvOvertimeHours)
+        actvExtraHours = findViewById(R.id.actvExtraHours)
         etNote = findViewById(R.id.etNote)
         tvTitle = findViewById(R.id.tvTitle)
         btnDelete = findViewById(R.id.btnDelete)
+        switchLeave = findViewById(R.id.switchLeave)
+        leaveOptionsLayout = findViewById(R.id.leaveOptionsLayout)
+        actvLeaveType = findViewById(R.id.actvLeaveType)
+        actvLeaveHours = findViewById(R.id.actvLeaveHours)
         
         val tvDate = findViewById<TextView>(R.id.tvDate)
         val dateStr = String.format(Locale.getDefault(), "%d-%02d-%02d", year, month + 1, day)
         tvDate.text = dateStr
     }
     
+    private fun setupHourDropdowns() {
+        val hourAdapter = ArrayAdapter(
+            context,
+            android.R.layout.simple_dropdown_item_1line,
+            hourOptions
+        )
+        
+        actvOvertimeHours.setAdapter(hourAdapter)
+        actvExtraHours.setAdapter(hourAdapter)
+        
+        // 默认选择空白
+        actvOvertimeHours.setText("", false)
+        actvExtraHours.setText("", false)
+    }
+    
+    private fun setupLeaveTypeDropdown() {
+        val leaveTypes = LeaveType.entries.toTypedArray()
+        val adapter = ArrayAdapter(
+            context,
+            android.R.layout.simple_dropdown_item_1line,
+            leaveTypes.map { it.displayName }
+        )
+        actvLeaveType.setAdapter(adapter)
+        actvLeaveType.setText(LeaveType.ANNUAL_LEAVE.displayName, false)
+        
+        // 请假天数也设置下拉（按天，1天=8小时）
+        val leaveHoursAdapter = ArrayAdapter(
+            context,
+            android.R.layout.simple_dropdown_item_1line,
+            leaveDayOptions
+        )
+        actvLeaveHours.setAdapter(leaveHoursAdapter)
+        actvLeaveHours.setText("1.0", false)
+        
+        actvLeaveType.setOnItemClickListener { _, _, position, _ ->
+            selectedLeaveType = leaveTypes[position]
+        }
+    }
+    
     private fun setupExistingData() {
         if (existingRecord != null) {
             tvTitle.text = "编辑加班记录"
-            etOvertimeHours.setText(existingRecord.overtimeHours.toString())
-            etExtraHours.setText(existingRecord.extraHours.toString())
+            if (existingRecord.overtimeHours > 0) {
+                actvOvertimeHours.setText(existingRecord.overtimeHours.toString(), false)
+            }
+            if (existingRecord.extraHours > 0) {
+                actvExtraHours.setText(existingRecord.extraHours.toString(), false)
+            }
             etNote.setText(existingRecord.note ?: "")
         } else if (existingAttendance != null) {
             tvTitle.text = "编辑考勤记录"
             if (existingAttendance.manualOvertimeHours > 0) {
-                etOvertimeHours.setText(existingAttendance.manualOvertimeHours.toString())
+                actvOvertimeHours.setText(existingAttendance.manualOvertimeHours.toString(), false)
             }
             if (existingAttendance.manualExtraHours > 0) {
-                etExtraHours.setText(existingAttendance.manualExtraHours.toString())
+                actvExtraHours.setText(existingAttendance.manualExtraHours.toString(), false)
             }
             etNote.setText(existingAttendance.note ?: "")
+            
+            // 加载请假数据
+            if (existingAttendance.isLeave) {
+                switchLeave.isChecked = true
+                leaveOptionsLayout.visibility = View.VISIBLE
+                if (existingAttendance.leaveHours > 0) {
+                    actvLeaveHours.setText(existingAttendance.leaveHours.toString(), false)
+                }
+                existingAttendance.leaveType?.let { type ->
+                    LeaveType.fromString(type)?.let { lt ->
+                        selectedLeaveType = lt
+                        actvLeaveType.setText(lt.displayName, false)
+                    }
+                }
+            }
             btnDelete.visibility = View.VISIBLE
         } else {
             tvTitle.text = "添加加班记录"
@@ -93,50 +179,93 @@ class AddOvertimeDialog(
             dismiss()
         }
         
+        // 请假开关
+        switchLeave.setOnCheckedChangeListener { _, isChecked ->
+            leaveOptionsLayout.visibility = if (isChecked) View.VISIBLE else View.GONE
+        }
+        
         findViewById<View>(R.id.btnSave).setOnClickListener {
             saveData()
         }
     }
     
     private fun saveData() {
-        val overtimeHoursStr = etOvertimeHours.text?.toString() ?: ""
-        val extraHoursStr = etExtraHours.text?.toString() ?: ""
+        val overtimeHoursStr = actvOvertimeHours.text?.toString() ?: ""
+        val extraHoursStr = actvExtraHours.text?.toString() ?: ""
         val note = etNote.text?.toString() ?: ""
+        val isLeave = switchLeave.isChecked
         
+        val dateStr = String.format(Locale.getDefault(), "%d-%02d-%02d", year, month + 1, day)
+        
+        // 如果是请假模式
+        if (isLeave) {
+            val leaveHoursStr = actvLeaveHours.text?.toString() ?: ""
+            val leaveHours = leaveHoursStr.toDoubleOrNull()
+            
+            when {
+                leaveHours == null -> {
+                    Toast.makeText(context, "请选择请假天数", Toast.LENGTH_SHORT).show()
+                    return
+                }
+                leaveHours <= 0 -> {
+                    Toast.makeText(context, "请假天数必须大于0", Toast.LENGTH_SHORT).show()
+                    return
+                }
+                leaveHours > maxLeaveDays -> {
+                    Toast.makeText(context, "当月剩余${maxLeaveDays}天，请假不能超过${maxLeaveDays}天", Toast.LENGTH_SHORT).show()
+                    return
+                }
+            }
+            
+            if (existingRecord != null && onSaveOvertimeRecord != null) {
+                // OvertimeRecord doesn't support leave, show error
+                Toast.makeText(context, "加班记录不支持请假，请删除后重新添加", Toast.LENGTH_SHORT).show()
+                return
+            } else if (existingAttendance != null && onSaveAttendance != null) {
+                val updatedAttendance = existingAttendance.copy(
+                    isLeave = true,
+                    leaveType = selectedLeaveType.name,
+                    leaveHours = leaveHours ?: 1.0,
+                    note = if (note.isNullOrEmpty()) null else note
+                )
+                onSaveAttendance.invoke(updatedAttendance)
+            } else if (onSaveAttendance != null) {
+                val newAttendance = Attendance(
+                    id = 0,
+                    date = dateStr,
+                    isLeave = true,
+                    leaveType = selectedLeaveType.name,
+                    leaveHours = leaveHours ?: 1.0,
+                    note = if (note.isNullOrEmpty()) null else note
+                )
+                onSaveAttendance.invoke(newAttendance)
+            }
+            dismiss()
+            return
+        }
+        
+        // 非请假模式，使用加班/加点时长
         val overtimeHours = overtimeHoursStr.toDoubleOrNull()
         val extraHours = extraHoursStr.toDoubleOrNull()
         
-        when {
-            overtimeHours == null && extraHours == null -> {
-                Toast.makeText(context, "请输入加班时长或加点时长", Toast.LENGTH_SHORT).show()
-                return
-            }
-            overtimeHours != null && overtimeHours < 0 -> {
-                Toast.makeText(context, "加班时长不能为负数", Toast.LENGTH_SHORT).show()
-                return
-            }
-            extraHours != null && extraHours < 0 -> {
-                Toast.makeText(context, "加点时长不能为负数", Toast.LENGTH_SHORT).show()
-                return
-            }
-            overtimeHours != null && overtimeHours > 24 -> {
-                Toast.makeText(context, "单日加班时长不能超过24小时", Toast.LENGTH_SHORT).show()
-                return
-            }
-            extraHours != null && extraHours > 24 -> {
-                Toast.makeText(context, "单日加点时长不能超过24小时", Toast.LENGTH_SHORT).show()
-                return
-            }
-            (overtimeHours == 0.0 || overtimeHours == null) && 
-            (extraHours == 0.0 || extraHours == null) -> {
-                Toast.makeText(context, "请输入有效的加班或加点时长", Toast.LENGTH_SHORT).show()
-                return
-            }
+        // 加班和加点至少要填一个
+        if (overtimeHours == null && extraHours == null) {
+            Toast.makeText(context, "请选择加班时长或加点时长", Toast.LENGTH_SHORT).show()
+            return
+        }
+        
+        // 验证范围
+        if (overtimeHours != null && overtimeHours > 11) {
+            Toast.makeText(context, "单日加班时长不能超过11小时", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (extraHours != null && extraHours > 11) {
+            Toast.makeText(context, "单日加点时长不能超过11小时", Toast.LENGTH_SHORT).show()
+            return
         }
         
         val finalOvertime = overtimeHours ?: 0.0
         val finalExtra = extraHours ?: 0.0
-        val dateStr = String.format(Locale.getDefault(), "%d-%02d-%02d", year, month + 1, day)
         
         if (existingRecord != null && onSaveOvertimeRecord != null) {
             val updatedRecord = existingRecord.copy(
@@ -147,6 +276,9 @@ class AddOvertimeDialog(
             onSaveOvertimeRecord?.invoke(updatedRecord)
         } else if (existingAttendance != null && onSaveAttendance != null) {
             val updatedAttendance = existingAttendance.copy(
+                isLeave = false,
+                leaveType = null,
+                leaveHours = 0.0,
                 manualOvertimeHours = if (finalOvertime > 0) finalOvertime else -1.0,
                 manualExtraHours = if (finalExtra > 0) finalExtra else -1.0,
                 note = if (note.isNullOrEmpty()) null else note
@@ -164,6 +296,9 @@ class AddOvertimeDialog(
             val newAttendance = Attendance(
                 id = 0, // 让Room数据库自动生成ID
                 date = dateStr,
+                isLeave = false,
+                leaveType = null,
+                leaveHours = 0.0,
                 manualOvertimeHours = if (finalOvertime > 0) finalOvertime else -1.0,
                 manualExtraHours = if (finalExtra > 0) finalExtra else -1.0,
                 note = if (note.isNullOrEmpty()) null else note

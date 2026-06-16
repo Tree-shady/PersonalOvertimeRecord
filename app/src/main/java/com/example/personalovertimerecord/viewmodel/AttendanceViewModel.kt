@@ -49,48 +49,44 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
     
-    fun addAttendance(attendance: Attendance) {
+    /**
+     * 封装带加载状态的数据库操作
+     */
+    private inline fun executeWithLoading(
+        operation: String,
+        crossinline block: suspend () -> Unit
+    ) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 _isLoading.postValue(true)
-                repository.insertAttendance(attendance)
-                AppLogger.sensitive("Add Attendance", attendance.date, true)
+                block()
             } catch (e: Exception) {
-                AppLogger.e("Error adding attendance", e)
-                _errorMessage.postValue("添加记录失败，请稍后重试")
+                AppLogger.e("Error in $operation", e)
+                _errorMessage.postValue("${operation}失败，请稍后重试")
             } finally {
                 _isLoading.postValue(false)
             }
+        }
+    }
+    
+    fun addAttendance(attendance: Attendance) {
+        executeWithLoading("添加记录") {
+            repository.insertAttendance(attendance)
+            AppLogger.sensitive("Add Attendance", attendance.date, true)
         }
     }
     
     fun updateAttendance(attendance: Attendance) {
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                _isLoading.postValue(true)
-                repository.updateAttendance(attendance)
-                AppLogger.sensitive("Update Attendance", attendance.date, true)
-            } catch (e: Exception) {
-                AppLogger.e("Error updating attendance", e)
-                _errorMessage.postValue("更新记录失败，请稍后重试")
-            } finally {
-                _isLoading.postValue(false)
-            }
+        executeWithLoading("更新记录") {
+            repository.updateAttendance(attendance)
+            AppLogger.sensitive("Update Attendance", attendance.date, true)
         }
     }
     
     fun deleteAttendance(attendance: Attendance) {
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                _isLoading.postValue(true)
-                repository.deleteAttendance(attendance.id)
-                AppLogger.sensitive("Delete Attendance", attendance.date, true)
-            } catch (e: Exception) {
-                AppLogger.e("Error deleting attendance", e)
-                _errorMessage.postValue("删除记录失败，请稍后重试")
-            } finally {
-                _isLoading.postValue(false)
-            }
+        executeWithLoading("删除记录") {
+            repository.deleteAttendance(attendance.id)
+            AppLogger.sensitive("Delete Attendance", attendance.date, true)
         }
     }
     
@@ -106,18 +102,5 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
     
     fun clearError() {
         _errorMessage.value = null
-    }
-    
-    fun refreshData() {
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                val freshData = repository.getAllAttendance()
-                _allAttendanceState.value = freshData
-                AppLogger.d("Data refreshed successfully")
-            } catch (e: Exception) {
-                AppLogger.e("Error refreshing data", e)
-                _errorMessage.postValue("刷新数据失败，请稍后重试")
-            }
-        }
     }
 }

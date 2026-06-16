@@ -20,7 +20,11 @@ data class AttendanceEntity(
     val manualOvertimeHours: Double = -1.0,
     val manualExtraHours: Double = -1.0,
     val createdAt: Long = System.currentTimeMillis(),
-    val modifiedAt: Long? = null  // 用于支持增量同步
+    val modifiedAt: Long? = null,  // 用于支持增量同步
+    // 请假相关字段
+    val isLeave: Boolean = false,
+    val leaveType: String? = null,
+    val leaveHours: Double = 0.0
 ) {
     /**
      * 转换为Attendance数据模型
@@ -35,7 +39,10 @@ data class AttendanceEntity(
             checkOutTimestamp = checkOutTimestamp,
             note = note,
             manualOvertimeHours = manualOvertimeHours,
-            manualExtraHours = manualExtraHours
+            manualExtraHours = manualExtraHours,
+            isLeave = isLeave,
+            leaveType = leaveType,
+            leaveHours = leaveHours
         )
     }
 
@@ -55,7 +62,10 @@ data class AttendanceEntity(
                 note = attendance.note,
                 manualOvertimeHours = attendance.manualOvertimeHours,
                 manualExtraHours = attendance.manualExtraHours,
-                modifiedAt = now
+                modifiedAt = now,
+                isLeave = attendance.isLeave,
+                leaveType = attendance.leaveType,
+                leaveHours = attendance.leaveHours
             )
         }
     }

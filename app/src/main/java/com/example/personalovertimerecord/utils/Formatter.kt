@@ -1,12 +1,11 @@
 package com.example.personalovertimerecord.utils
 
-import java.text.SimpleDateFormat
-import java.util.Calendar
-import java.util.Date
+import com.example.personalovertimerecord.data.DayType
+import com.example.personalovertimerecord.data.LeaveType
 import java.util.Locale
 
 object Formatter {
-    
+
     fun formatHours(hours: Double): String {
         val fullHours = hours.toInt()
         val minutes = ((hours - fullHours) * 60).toInt()
@@ -16,53 +15,55 @@ object Formatter {
             "${fullHours}h"
         }
     }
-    
+
     fun formatMoney(amount: Double): String {
         return String.format(Locale.getDefault(), "¥%.2f", amount)
     }
-    
+
     fun formatHoursShort(hours: Double): String {
         return String.format(Locale.getDefault(), "%.1fh", hours)
     }
-    
+
     fun formatDate(dateStr: String): String {
         return try {
-            val inputFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-            val outputFormat = SimpleDateFormat("MM月dd日 EEEE", Locale.CHINA)
-            val date = inputFormat.parse(dateStr)
-            val formatted = outputFormat.format(date ?: Date())
-            if (formatted.startsWith("星期")) formatted else "星期$formatted"
+            val date = DateUtils.parseDate(dateStr) ?: return dateStr
+            val weekday = DateUtils.getChineseWeekday(date)
+            val parts = dateStr.split("-")
+            if (parts.size == 3) {
+                "${parts[1]}月${parts[2]}日 $weekday"
+            } else {
+                dateStr
+            }
         } catch (e: Exception) {
             dateStr
         }
     }
-    
+
     fun getDayTypeString(dateStr: String): String {
-        return try {
-            val format = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-            val date = format.parse(dateStr) ?: return "工作日"
-            val calendar = Calendar.getInstance()
-            calendar.time = date
-            val dayOfWeek = calendar.get(Calendar.DAY_OF_WEEK)
-            val monthDay = dateStr.substring(5)
-            
-            val holidays = setOf(
-                "01-01", "01-02", "01-03",
-                "02-10", "02-11", "02-12", "02-13", "02-14", "02-15", "02-16", "02-17",
-                "04-04", "04-05", "04-06",
-                "05-01", "05-02", "05-03", "05-04", "05-05",
-                "06-10",
-                "09-15", "09-16", "09-17",
-                "10-01", "10-02", "10-03", "10-04", "10-05", "10-06", "10-07"
-            )
-            
-            when {
-                holidays.contains(monthDay) -> "法定假日"
-                dayOfWeek == Calendar.SATURDAY || dayOfWeek == Calendar.SUNDAY -> "周末"
-                else -> "工作日"
-            }
-        } catch (e: Exception) {
-            "工作日"
+        return when (HolidayManager.getDayType(dateStr)) {
+            DayType.HOLIDAY -> "法定假日"
+            DayType.WEEKEND -> "周末"
+            DayType.WORKDAY -> "工作日"
+        }
+    }
+
+    /**
+     * 获取请假类型的显示名称
+     */
+    fun getLeaveTypeDisplayName(leaveType: String?): String {
+        return LeaveType.fromString(leaveType)?.displayName ?: "请假"
+    }
+
+    /**
+     * 格式化请假信息
+     */
+    fun formatLeaveInfo(leaveType: String?, leaveHours: Double): String {
+        if (leaveType == null || leaveHours <= 0) return ""
+        val typeName = getLeaveTypeDisplayName(leaveType)
+        return if (leaveHours >= 1.0) {
+            "${typeName}${leaveHours.toInt()}天"
+        } else {
+            "${typeName}${leaveHours * 8}小时"
         }
     }
 }

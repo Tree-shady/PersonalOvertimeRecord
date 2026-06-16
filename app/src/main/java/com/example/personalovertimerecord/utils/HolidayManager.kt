@@ -1,7 +1,6 @@
 package com.example.personalovertimerecord.utils
 
 import com.example.personalovertimerecord.data.DayType
-import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
 
@@ -234,15 +233,9 @@ object HolidayManager {
      * @return 是否为周末
      */
     fun isWeekend(date: String): Boolean {
-        return try {
-            val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-            val calendar = Calendar.getInstance()
-            calendar.time = dateFormat.parse(date) ?: return false
-            val dayOfWeek = calendar.get(Calendar.DAY_OF_WEEK)
-            dayOfWeek == Calendar.SATURDAY || dayOfWeek == Calendar.SUNDAY
-        } catch (e: Exception) {
-            false
-        }
+        val calendar = DateUtils.parseDateString(date) ?: return false
+        val dayOfWeek = calendar.get(Calendar.DAY_OF_WEEK)
+        return dayOfWeek == Calendar.SATURDAY || dayOfWeek == Calendar.SUNDAY
     }
     
     /**
@@ -251,14 +244,8 @@ object HolidayManager {
      * @return 星期几（1=周日，2=周一... 7=周六）
      */
     fun getDayOfWeek(date: String): Int {
-        return try {
-            val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-            val calendar = Calendar.getInstance()
-            calendar.time = dateFormat.parse(date) ?: return 0
-            calendar.get(Calendar.DAY_OF_WEEK)
-        } catch (e: Exception) {
-            0
-        }
+        val calendar = DateUtils.parseDateString(date) ?: return 0
+        return calendar.get(Calendar.DAY_OF_WEEK)
     }
     
     /**

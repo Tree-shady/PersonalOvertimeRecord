@@ -44,3 +44,25 @@ data class OvertimeResult(
 )
 
 enum class DayType { WORKDAY, WEEKEND, HOLIDAY }
+
+/**
+ * 请假类型枚举
+ */
+enum class LeaveType(val displayName: String, val color: Int) {
+    ANNUAL_LEAVE("年假", 0xFF4CAF50.toInt()),      // 绿色
+    SICK_LEAVE("病假", 0xFFFF9800.toInt()),       // 橙色
+    PERSONAL_LEAVE("事假", 0xFF9C27B0.toInt()),   // 紫色
+    MARRIAGE_LEAVE("婚假", 0xFFE91E63.toInt()),    // 粉红
+    MATERNITY_LEAVE("产假", 0xFFFF5722.toInt()),   // 深橙
+    PATERNITY_LEAVE("陪产假", 0xFF00BCD4.toInt()), // 青色
+    FUNERAL_LEAVE("丧假", 0xFF795548.toInt()),     // 棕色
+    WORK_INJURY("工伤假", 0xFFF44336.toInt()),     // 红色
+    UNPAID_LEAVE("无薪假", 0xFF607D8B.toInt()),    // 蓝灰
+    OTHER_LEAVE("其他", 0xFF9E9E9E.toInt());      // 灰色
+
+    companion object {
+        fun fromString(value: String?): LeaveType? {
+            return entries.find { it.name == value }
+        }
+    }
+}

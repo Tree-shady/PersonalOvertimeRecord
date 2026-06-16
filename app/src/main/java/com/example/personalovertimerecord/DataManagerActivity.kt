@@ -11,6 +11,7 @@ import androidx.lifecycle.lifecycleScope
 import com.example.personalovertimerecord.data.db.AppDatabase
 import com.example.personalovertimerecord.data.SettingsManager
 import com.example.personalovertimerecord.databinding.ActivityDataManagerBinding
+import com.example.personalovertimerecord.utils.CsvImporter
 import com.example.personalovertimerecord.utils.DataExporter
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -33,6 +34,12 @@ class DataManagerActivity : AppCompatActivity() {
     private val importLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri?.let {
             importData(it)
+        }
+    }
+    
+    private val csvImportLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri?.let {
+            importFromCsv(it)
         }
     }
     
@@ -61,6 +68,10 @@ class DataManagerActivity : AppCompatActivity() {
         
         binding.btnImport.setOnClickListener {
             showImportConfirmDialog()
+        }
+        
+        binding.btnImportCsv.setOnClickListener {
+            showCsvImportDialog()
         }
     }
     
@@ -100,11 +111,57 @@ class DataManagerActivity : AppCompatActivity() {
     private fun showImportConfirmDialog() {
         AlertDialog.Builder(this)
             .setTitle("导入数据")
-            .setMessage("请选择要导入的 JSON 文件")
+            .setMessage("请选择要导入的 JSON 文件（完整备份）")
             .setPositiveButton("选择文件") { _, _ ->
                 importLauncher.launch("application/json")
             }
             .setNegativeButton("取消", null)
+            .show()
+    }
+    
+    private fun showCsvImportDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("CSV 批量导入")
+            .setMessage(CsvImporter.getSupportedFormatDescription())
+            .setPositiveButton("选择文件") { _, _ ->
+                csvImportLauncher.launch("text/csv")
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+    
+    private fun importFromCsv(uri: android.net.Uri) {
+        lifecycleScope.launch {
+            try {
+                contentResolver.openInputStream(uri)?.use { inputStream ->
+                    val result = CsvImporter.importFromCsv(this@DataManagerActivity, inputStream)
+                    showImportResultDialog(result)
+                } ?: run {
+                    Toast.makeText(this@DataManagerActivity, "无法读取文件", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(this@DataManagerActivity, "导入失败：${e.message}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+    
+    private fun showImportResultDialog(result: CsvImporter.ImportResult) {
+        val message = StringBuilder()
+        message.append(result.message)
+        
+        if (result.errors.isNotEmpty()) {
+            message.append("\n\n错误详情：")
+            result.errors.forEach { error ->
+                message.append("\n- $error")
+            }
+        }
+        
+        AlertDialog.Builder(this)
+            .setTitle(if (result.success) "导入成功" else "导入完成")
+            .setMessage(message.toString())
+            .setPositiveButton("确定") { _, _ ->
+                updateStats()
+            }
             .show()
     }
     

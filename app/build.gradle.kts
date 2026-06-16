@@ -1,8 +1,43 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     // id("com.google.gms.google-services") // 已禁用云同步
     id("com.google.devtools.ksp")
+}
+
+// 版本号自动管理
+val versionPropsFile = file("version.properties")
+var versionCode = 1
+var versionName = "1.3.0.1"
+
+if (versionPropsFile.exists()) {
+    val props = Properties()
+    versionPropsFile.inputStream().use { props.load(it) }
+    val buildNumber = props.getProperty("BUILD_NUMBER", "1").toInt()
+    val baseVersion = props.getProperty("BASE_VERSION", "1.3.0")
+    
+    // 递增构建号
+    val newBuildNumber = buildNumber + 1
+    props.setProperty("BUILD_NUMBER", newBuildNumber.toString())
+    versionPropsFile.outputStream().use { props.store(it, "Auto-incremented build number") }
+    
+    versionCode = newBuildNumber
+    versionName = "${baseVersion}.${newBuildNumber}"
+    
+    println("🔢 Version auto-incremented: $versionName (build #$versionCode)")
+} else {
+    // 首次创建版本文件
+    val props = Properties()
+    props.setProperty("BASE_VERSION", "1.3.0")
+    props.setProperty("BUILD_NUMBER", "1")
+    versionPropsFile.outputStream().use { props.store(it, "Initial version properties") }
+    
+    versionCode = 1
+    versionName = "1.3.0.1"
+    
+    println("🔢 Version initialized: $versionName (build #$versionCode)")
 }
 
 android {
@@ -18,8 +53,8 @@ android {
         applicationId = "com.example.personalovertimerecord"
         minSdk = 24
         targetSdk = 36
-        versionCode = 2
-        versionName = "1.3.0"
+        versionCode = versionCode
+        versionName = versionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -124,6 +159,9 @@ dependencies {
     // SQLCipher - Database Encryption
     implementation("net.zetetic:android-database-sqlcipher:4.5.4")
     implementation("androidx.sqlite:sqlite-ktx:2.2.0")
+    
+    // Biometric Authentication
+    implementation("androidx.biometric:biometric-ktx:1.2.0-alpha05")
     
     // WebDAV will use built-in HttpURLConnection
     
