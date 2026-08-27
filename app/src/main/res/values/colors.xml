@@ -13,4 +13,14 @@
     <color name="terminal_background">#FF000000</color>
     <color name="terminal_green">#FF00FF00</color>
     <color name="terminal_dim">#FF008800</color>
+    
+    <!-- Light Theme (Day) Colors - 与 values-night 对应，避免 MissingDefaultResource -->
+    <color name="background_primary">#FFF0F4F8</color>
+    <color name="background_secondary">#FFE3E9F0</color>
+    <color name="background_card">#FFFFFFFF</color>
+    <color name="surface">#FFFFFFFF</color>
+    <color name="text_primary">#FF333333</color>
+    <color name="text_secondary">#FF757575</color>
+    <color name="text_hint">#FF9E9E9E</color>
+    <color name="status_bar">#FF6200EE</color>
 </resources>
