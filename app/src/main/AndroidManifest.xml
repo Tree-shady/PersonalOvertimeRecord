@@ -78,6 +78,15 @@
             </intent-filter>
         </receiver>
         
+        <!-- Boot Completed Receiver (设备重启后恢复自动同步调度) -->
+        <receiver
+            android:name=".utils.AutoSyncBootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+        
         <!-- Reminder Receiver -->
         <receiver
             android:name=".utils.ReminderReceiver"

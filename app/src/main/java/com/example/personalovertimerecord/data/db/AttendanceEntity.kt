@@ -24,7 +24,10 @@ data class AttendanceEntity(
     // 请假相关字段
     val isLeave: Boolean = false,
     val leaveType: String? = null,
-    val leaveHours: Double = 0.0
+    val leaveHours: Double = 0.0,
+    // 软删除标记：用于支持跨设备删除同步（tombstone）
+    // true 表示该记录已被删除，正常查询会过滤掉，仅用于同步删除操作
+    val isDeleted: Boolean = false
 ) {
     /**
      * 转换为Attendance数据模型

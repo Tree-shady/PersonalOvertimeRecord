@@ -2,7 +2,7 @@
 
 一个功能丰富、稳定可靠的Android应用，用于记录个人的加班信息和计算加班工资。
 
-![Version](https://img.shields.io/badge/version-1.2.0-blue)
+![Version](https://img.shields.io/badge/version-1.3.0-blue)
 ![Min SDK](https://img.shields.io/badge/minSdk-24-green)
 ![Target SDK](https://img.shields.io/badge/targetSdk-36-orange)
 
@@ -13,15 +13,17 @@
 - ⏰ **打卡功能** - 记录上班/下班时间
 - 💰 **智能计算** - 自动计算加班时长和加班工资
 - 📊 **月度统计** - 实时统计当月加班时长、预计工资
-- 📈 **年度报表** - 完整的年度数据统计与图表可视化
+- 📈 **月度分析报表** - 支持 ◀/▶ 切换月份，按月查看加班天数、总时长、加班工资与工资构成
+- 📊 **堆叠柱状图** - 月度时长柱状图用不同颜色区分"加班"与"加点"
 - 🎯 **智能区分** - 工作日、周末、节假日加班倍率自动识别
 
 ### 数据管理
 - 📤 **数据导出** - 支持导出为 PDF 精美报告、CSV/JSON 格式
 - 📥 **数据导入** - 从文件恢复历史数据
 - 🌐 **云端同步** - 支持 WebDAV 协议双向同步
-- 🔄 **自动同步** - 后台定时自动同步数据到云端
+- 🔄 **自动同步** - 后台定时自动同步数据到云端，设备重启后自动恢复调度
 - 🔀 **增量同步** - 智能增量同步，只同步有变化的数据
+- 🗑️ **删除同步** - 删除操作可跨设备同步，已删除的记录不会"复活"
 
 ### 用户体验
 - 🌙 **深色模式** - 支持跟随系统/浅色/深色三种主题
@@ -30,10 +32,11 @@
 - ✨ **流畅动画** - 精心设计的过渡动画效果
 
 ### 安全与稳定
-- 🔒 **数据加密** - SQLCipher 数据库加密
+- 🔒 **数据加密** - SQLCipher 数据库加密，主密钥由 Android Keystore 保护（不再明文存储）
 - 🔐 **隐私存储** - EncryptedSharedPreferences 存储敏感信息
 - 🛡️ **健壮性** - 全局异常处理、数据验证机制
-- 📡 **网络健壮** - 超时处理、重试机制、SSL 支持
+- 📡 **网络健壮** - 超时处理、连接测试、标准 SSL 证书校验
+- 🔐 **同步安全** - 可选 AES-256 加密同步数据；全局互斥锁避免并发同步冲突
 
 ## 技术栈
 
@@ -59,8 +62,9 @@
 | Database | Room + KSP | 本地数据持久化 |
 | Database | SQLCipher | 数据库加密 |
 | Security | AndroidX Security | 加密存储 |
-| Network | OkHttp | HTTP 客户端 |
-| Chart | MPAndroidChart | 数据可视化 |
+| Security | Android Keystore | 数据库主密钥保护 |
+| Network | HttpURLConnection | HTTP 客户端（WebDAV 同步） |
+| Chart | MPAndroidChart | 数据可视化（柱状/饼图/折线图） |
 | JSON | Gson | JSON 序列化 |
 | Image | Coil | 图片加载 |
 
@@ -77,28 +81,43 @@ app/
 │   ├── repository/               # 数据仓库层
 │   ├── utils/                    # 工具类
 │   │   ├── AppLogger.kt          # 日志工具
+│   │   ├── AutoSyncManager.kt    # 自动同步调度
+│   │   ├── AutoSyncReceiver.kt   # 自动同步广播接收器
+│   │   ├── AutoSyncBootReceiver.kt # 开机恢复同步调度
 │   │   ├── ChartHelper.kt        # 图表助手
+│   │   ├── ConflictStrategy.kt   # 同步冲突策略
 │   │   ├── CsvExporter.kt        # CSV 导出
-│   │   ├── DataValidator.kt       # 数据验证
+│   │   ├── CsvImporter.kt        # CSV 导入
+│   │   ├── DataExporter.kt       # 数据导出/恢复/增量合并
+│   │   ├── DataValidator.kt      # 数据验证
+│   │   ├── DatabaseKeyManager.kt # 数据库主密钥管理（Keystore 保护）
 │   │   ├── DateUtils.kt          # 日期工具
+│   │   ├── EncryptionUtils.kt    # AES 加密工具
+│   │   ├── Formatter.kt          # 格式化工具
 │   │   ├── GlobalExceptionHandler.kt # 全局异常处理
-│   │   ├── HolidayManager.kt      # 节假日管理 (2024-2028)
-│   │   ├── NetworkUtils.kt        # 网络工具
-│   │   ├── OvertimeCalculator.kt  # 加班计算
+│   │   ├── HolidayManager.kt     # 节假日管理 (2024-2028)
+│   │   ├── InputValidator.kt     # 输入验证
+│   │   ├── NetworkUtils.kt       # 网络状态检查
+│   │   ├── OvertimeCalculator.kt # 加班计算
 │   │   ├── PdfExporter.kt        # PDF 导出
-│   │   ├── ReminderManager.kt     # 打卡提醒
-│   │   ├── SettingsManager.kt     # 设置管理
+│   │   ├── PermissionManager.kt  # 权限管理
+│   │   ├── ReminderManager.kt    # 打卡提醒
+│   │   ├── SalaryCalculator.kt   # 工资计算
+│   │   ├── SecurePreferencesManager.kt # 加密存储
+│   │   ├── SettingsManager.kt    # 设置管理
+│   │   ├── SyncDirection.kt      # 同步方向与预置策略
 │   │   ├── SyncManager.kt        # 同步管理
-│   │   ├── ThemeManager.kt        # 主题管理
-│   │   └── WebDAVManager.kt       # WebDAV 客户端
+│   │   ├── ThemeManager.kt       # 主题管理
+│   │   └── WebDAVManager.kt      # WebDAV 客户端
 │   ├── view/                     # 自定义视图
 │   ├── viewmodel/                # ViewModel 层
 │   ├── MainActivity.kt           # 主界面
 │   ├── SettingsActivity.kt       # 设置界面
 │   ├── DataManagerActivity.kt    # 数据管理界面
-│   ├── ReportActivity.kt         # 报表界面
+│   ├── ReportActivity.kt         # 报表界面（月度分析）
 │   ├── SplashActivity.kt         # 启动页（科幻风格）
-│   └── OvertimeApplication.kt   # 应用入口
+│   ├── BiometricActivity.kt      # 生物识别解锁
+│   └── OvertimeApplication.kt    # 应用入口
 └── res/
     ├── layout/                   # XML 布局文件
     ├── drawable/                 # 可绘制资源
@@ -141,7 +160,7 @@ cd PersonalOvertimeRecord
 如遇 Gradle 下载困难，可配置国内镜像。在 `gradle/wrapper/gradle-wrapper.properties` 中：
 
 ```properties
-distributionUrl=https://repo.huaweicloud.com/gradle/gradle-8.6-bin.zip
+distributionUrl=https://repo.huaweicloud.com/gradle/gradle-9.5.1-bin.zip
 ```
 
 ## 功能说明
@@ -156,38 +175,40 @@ distributionUrl=https://repo.huaweicloud.com/gradle/gradle-8.6-bin.zip
 
 > 节假日数据已内置 2024-2028 年中国法定节假日
 
+### 报表月度分析
+
+报表页面默认展示当前月份，支持按月维度进行分析：
+
+- **月份切换**：顶部 ◀/▶ 按钮切换月份，跨年自动切换年份
+- **概览卡片**：按选中月份统计加班天数、总时长、加班工资
+- **工资构成**：按选中月份显示底薪、绩效、加班工资、本月工资
+- **月度时长柱状图**：全年 12 个月，堆叠展示"加班"（紫色）与"加点"（橙色）时长
+- **加班类型分布饼图**：当月工作日/周末/节假日加班时长占比
+- **加班工资趋势折线图**：全年 12 个月加班工资变化趋势
+
+### 云端同步机制
+
+- **双向同步** - 智能合并本地与云端数据，保持两端一致
+- **冲突策略** - 支持较新者获胜 / 本地优先 / 云端优先
+- **增量合并** - 只同步有变化的记录，减少流量
+- **删除同步** - 基于软删除标记（tombstone），删除操作可跨设备同步
+- **加密传输** - 可选 AES-256 加密备份内容，兼容旧版未加密数据
+- **自动同步** - AlarmManager 定时调度（15 分钟 ~ 24 小时可选），设备重启后自动恢复，可仅限 WiFi
+- **并发保护** - 全局互斥锁，手动与自动同步不会互相覆盖
+
 ### 设置选项
 
 | 类别 | 选项 | 说明 |
 |------|------|------|
 | 工资设置 | 基本工资 | 月基本工资金额 |
 | 工资设置 | 绩效奖金 | 绩效奖金百分比 |
-| 工时设置 | 月工作天数 | 默认 21.75 天 |
-| 工时设置 | 日工作时长 | 默认 8 小时 |
-| 工时设置 | 工作时间 | 上下班时间 |
-| 加班设置 | 各类型倍率 | 工作日/周末/节假日加班倍率 |
-| 外观设置 | 主题模式 | 跟随系统/浅色/深色 |
-| 提醒设置 | 打卡提醒 | 上班/下班提醒时间 |
-| 同步设置 | 自动同步 | 开关、同步间隔、WiFi 限制 |
-
-### 数据同步
-
-支持多种同步模式：
-
-| 模式 | 说明 |
-|------|------|
-| 智能双向同步 | 增量合并，只同步有变化的记录 |
-| 仅上传到云端 | 备份本地数据到 WebDAV |
-| 仅从云端下载 | 从 WebDAV 恢复数据 |
-| 完全覆盖同步 | 云端和本地完全替换 |
-
-### 数据导出
-
-| 格式 | 说明 |
-|------|------|
-| PDF | 精美的月度/年度考勤报告，可分享 |
-| CSV | Excel 兼容格式，便于数据分析 |
-| JSON | 完整数据备份，可用于数据迁移 |
+| 工资设置 | 加班倍率 | 工作日/周末/节假日倍率自定义 |
+| 考勤设置 | 工作时间 | 上下班时间 |
+| 自动同步 | 同步开关 | 启用/停用后台自动同步 |
+| 自动同步 | 同步间隔 | 15 分钟 ~ 24 小时可选 |
+| 自动同步 | WiFi 限制 | 仅在 WiFi 下自动同步 |
+| 数据加密 | 导出加密 | 导出文件加密密码 |
+| 数据加密 | 同步加密 | 云端同步数据加密密码 |
 
 ## 软件健壮性
 
@@ -208,20 +229,34 @@ distributionUrl=https://repo.huaweicloud.com/gradle/gradle-8.6-bin.zip
 
 - 自动网络状态检测
 - 可配置超时处理
-- 自动重试机制（指数退避）
-- SSL 证书支持
+- 连接测试与失败通知
+- 标准 SSL 证书校验（不信任任意证书）
 
 ## 使用说明
 
 1. **首次设置**: 首次启动后，进入设置页面配置基本工资、工作时间等
 2. **添加记录**: 点击日历日期添加考勤记录
 3. **打卡签到**: 输入上班和下班时间，自动计算加班
-4. **查看统计**: 主界面实时显示当月加班统计
+4. **查看统计**: 主界面实时显示当月加班统计；报表页面可切换月份查看月度分析
 5. **编辑记录**: 点击列表项编辑已有的考勤记录
 6. **数据导出**: 报表页面可导出 PDF/CSV 报告
 7. **云端同步**: 配置 WebDAV 后可自动同步数据
 
 ## 更新日志
+
+### v1.4.0 (2026-08-28)
+- ✨ 报表新增月度分析：支持月份切换，概览卡片/工资构成/饼图按月展示
+- ✨ 月度时长柱状图改为堆叠图，用不同颜色区分"加班"与"加点"
+- 🔒 数据库主密钥改用 Android Keystore 加密存储（修复密钥明文存储问题）
+- 🛡️ 移除 HTTPS 信任所有证书的中间人攻击风险
+- 🗑️ 实现删除同步（软删除 tombstone），已删除的记录不再"复活"
+- 🔄 修复自动同步协程未使用 goAsync 导致同步中断的问题
+- 🔄 新增开机广播，设备重启后自动恢复同步调度
+- 🔄 修复双向同步后本地数据库未更新的问题
+- 🔒 修复同步加密下载"假解密"误判，兼容旧版未加密数据
+- 🔧 同步增加全局互斥锁，避免手动/自动同步并发覆盖
+- 🔧 统一"上次同步时间"来源，移除未实现的 ASK_USER 冲突策略
+- 🧹 清理重复的 WebDAV 死代码，修正文档中 OkHttp 描述
 
 ### v1.3.0 (2026-06-14)
 - 🔒 修复云同步加密功能严重安全问题（数据未正确加密）

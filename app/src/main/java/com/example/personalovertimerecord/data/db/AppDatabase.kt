@@ -12,7 +12,7 @@ import net.sqlcipher.database.SupportFactory
 
 @Database(
     entities = [AttendanceEntity::class],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -50,7 +50,7 @@ abstract class AppDatabase : RoomDatabase() {
                 "overtime_database"
             )
                 .openHelperFactory(factory)
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_1_2, MIGRATION_3_4)
                 .fallbackToDestructiveMigration()
                 .build()
         }
@@ -61,7 +61,7 @@ abstract class AppDatabase : RoomDatabase() {
                 AppDatabase::class.java,
                 "overtime_database_unencrypted"
             )
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_1_2, MIGRATION_3_4)
                 .fallbackToDestructiveMigration()
                 .build()
         }
@@ -72,6 +72,16 @@ abstract class AppDatabase : RoomDatabase() {
                 // 添加 modifiedAt 列，默认值为 NULL
                 database.execSQL(
                     "ALTER TABLE attendance_records ADD COLUMN modifiedAt INTEGER"
+                )
+            }
+        }
+
+        // 从版本3迁移到版本4，添加软删除标记字段
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                // 添加 isDeleted 列，默认值为 0（未删除）
+                database.execSQL(
+                    "ALTER TABLE attendance_records ADD COLUMN isDeleted INTEGER NOT NULL DEFAULT 0"
                 )
             }
         }

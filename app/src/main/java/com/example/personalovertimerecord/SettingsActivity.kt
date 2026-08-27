@@ -225,7 +225,7 @@ class SettingsActivity : AppCompatActivity() {
     }
     
     private fun updateLastSyncTime() {
-        binding.tvLastSyncTime.text = "上次同步：${AutoSyncManager.getLastSyncTimeString()}"
+        binding.tvLastSyncTime.text = "上次同步：${AutoSyncManager.getLastSyncTimeString(this@SettingsActivity)}"
     }
     
     private fun performManualSync() {

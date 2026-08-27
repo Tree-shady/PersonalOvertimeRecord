@@ -1,10 +1,7 @@
 package com.example.personalovertimerecord.utils
 
 import android.content.Context
-import android.content.Intent
 import android.net.Uri
-import android.widget.Toast
-import com.example.personalovertimerecord.data.Attendance
 import com.example.personalovertimerecord.data.OvertimeSettings
 import com.example.personalovertimerecord.data.db.AttendanceDao
 import com.example.personalovertimerecord.data.db.AttendanceEntity
@@ -36,7 +33,9 @@ data class AttendanceEntityBackup(
     val manualOvertimeHours: Double = -1.0,
     val manualExtraHours: Double = -1.0,
     val createdAt: Long = System.currentTimeMillis(),
-    val modifiedAt: Long = System.currentTimeMillis()
+    val modifiedAt: Long = System.currentTimeMillis(),
+    // 软删除标记：true 表示该日期记录已被删除，用于跨设备同步删除
+    val isDeleted: Boolean = false
 )
 
 class DataExporter(
@@ -55,21 +54,8 @@ class DataExporter(
         withContext(Dispatchers.IO) {
             try {
                 val records = attendanceDao.getAllRecordsSync()
-                
-                val backupRecords = records.map { entity ->
-                    AttendanceEntityBackup(
-                        date = entity.date,
-                        checkInTime = entity.checkInTime,
-                        checkOutTime = entity.checkOutTime,
-                        checkInTimestamp = entity.checkInTimestamp,
-                        checkOutTimestamp = entity.checkOutTimestamp,
-                        note = entity.note,
-                        manualOvertimeHours = entity.manualOvertimeHours,
-                        manualExtraHours = entity.manualExtraHours,
-                        createdAt = entity.createdAt,
-                        modifiedAt = entity.modifiedAt ?: entity.createdAt
-                    )
-                }
+
+                val backupRecords = records.map { it.toBackup() }
 
                 val backupData = BackupData(
                     settings = settings,
@@ -104,7 +90,7 @@ class DataExporter(
                     BufferedReader(InputStreamReader(inputStream)).use { reader ->
                         val type = object : TypeToken<BackupData>() {}.type
                         val backupData: BackupData = gson.fromJson(reader, type)
-                        
+
                         withContext(Dispatchers.Main) {
                             onSuccess(backupData)
                         }
@@ -124,20 +110,13 @@ class DataExporter(
     suspend fun restoreDataFull(backupData: BackupData) {
         withContext(Dispatchers.IO) {
             attendanceDao.deleteAll()
-            
+
             for (record in backupData.attendanceRecords) {
-                val entity = AttendanceEntity(
+                val entity = toEntity(
+                    record = record,
                     id = 0L,
-                    date = record.date,
-                    checkInTime = record.checkInTime,
-                    checkOutTime = record.checkOutTime,
-                    checkInTimestamp = record.checkInTimestamp,
-                    checkOutTimestamp = record.checkOutTimestamp,
-                    note = record.note,
-                    manualOvertimeHours = record.manualOvertimeHours,
-                    manualExtraHours = record.manualExtraHours,
                     createdAt = record.createdAt,
-                    modifiedAt = record.modifiedAt
+                    isDeleted = record.isDeleted
                 )
                 attendanceDao.insert(entity)
             }
@@ -146,6 +125,11 @@ class DataExporter(
 
     /**
      * 增量合并模式恢复数据
+     *
+     * 除新增/更新外，还处理删除同步：
+     * - 云端标记删除的记录，按冲突策略决定是否把本地对应记录软删除；
+     * - 云端活跃记录可恢复本地已软删除的同日期记录。
+     *
      * @param backupData 备份数据
      * @param conflictStrategy 冲突解决策略
      * @return 合并结果的摘要信息
@@ -156,64 +140,65 @@ class DataExporter(
     ): SyncSummary = withContext(Dispatchers.IO) {
         var added = 0
         var updated = 0
+        var deleted = 0
         var skipped = 0
 
-        // 获取本地现有记录
-        val localRecords = attendanceDao.getAllRecordsSync()
+        // 获取本地现有记录（含软删除记录，避免删除标记被误判为"本地不存在"）
+        val localRecords = attendanceDao.getAllRecordsIncludingDeletedSync()
         val localMap = localRecords.associateBy { it.date }
 
         for (record in backupData.attendanceRecords) {
             val localRecord = localMap[record.date]
-            
+
             when {
-                // 本地不存在，直接插入
+                // 本地不存在：直接插入（携带云端删除/活跃状态）
                 localRecord == null -> {
-                    val entity = AttendanceEntity(
+                    val entity = toEntity(
+                        record = record,
                         id = 0L,
-                        date = record.date,
-                        checkInTime = record.checkInTime,
-                        checkOutTime = record.checkOutTime,
-                        checkInTimestamp = record.checkInTimestamp,
-                        checkOutTimestamp = record.checkOutTimestamp,
-                        note = record.note,
-                        manualOvertimeHours = record.manualOvertimeHours,
-                        manualExtraHours = record.manualExtraHours,
                         createdAt = record.createdAt,
-                        modifiedAt = record.modifiedAt
+                        isDeleted = record.isDeleted
                     )
                     attendanceDao.insert(entity)
-                    added++
+                    if (record.isDeleted) deleted++ else added++
                 }
-                
-                // 存在冲突，根据策略处理
+
+                // 本地存在：按云端状态与策略处理
                 else -> {
-                    val shouldUpdate = when (conflictStrategy) {
-                        ConflictStrategy.NEWER_WINS -> {
-                            record.modifiedAt > (localRecord.modifiedAt ?: 0L)
+                    // 云端已删除
+                    if (record.isDeleted) {
+                        val shouldDelete = when (conflictStrategy) {
+                            ConflictStrategy.NEWER_WINS ->
+                                record.modifiedAt >= (localRecord.modifiedAt ?: 0L)
+                            ConflictStrategy.LOCAL_WINS -> false
+                            ConflictStrategy.CLOUD_WINS -> true
                         }
-                        ConflictStrategy.LOCAL_WINS -> false
-                        ConflictStrategy.CLOUD_WINS -> true
-                        ConflictStrategy.ASK_USER -> true // 默认使用云端
-                    }
-                    
-                    if (shouldUpdate) {
-                        val entity = AttendanceEntity(
-                            id = localRecord.id,
-                            date = record.date,
-                            checkInTime = record.checkInTime,
-                            checkOutTime = record.checkOutTime,
-                            checkInTimestamp = record.checkInTimestamp,
-                            checkOutTimestamp = record.checkOutTimestamp,
-                            note = record.note,
-                            manualOvertimeHours = record.manualOvertimeHours,
-                            manualExtraHours = record.manualExtraHours,
-                            createdAt = localRecord.createdAt,
-                            modifiedAt = record.modifiedAt
-                        )
-                        attendanceDao.insertOrUpdate(entity)
-                        updated++
+                        if (shouldDelete && !localRecord.isDeleted) {
+                            attendanceDao.markDeleted(localRecord.id, record.modifiedAt)
+                            deleted++
+                        } else {
+                            skipped++
+                        }
                     } else {
-                        skipped++
+                        // 云端活跃记录
+                        val shouldUpdate = when (conflictStrategy) {
+                            ConflictStrategy.NEWER_WINS ->
+                                record.modifiedAt > (localRecord.modifiedAt ?: 0L)
+                            ConflictStrategy.LOCAL_WINS -> false
+                            ConflictStrategy.CLOUD_WINS -> true
+                        }
+                        if (shouldUpdate) {
+                            val entity = toEntity(
+                                record = record,
+                                id = localRecord.id,
+                                createdAt = localRecord.createdAt,
+                                isDeleted = false
+                            )
+                            attendanceDao.insertOrUpdate(entity)
+                            if (localRecord.isDeleted) added++ else updated++
+                        } else {
+                            skipped++
+                        }
                     }
                 }
             }
@@ -223,13 +208,16 @@ class DataExporter(
             totalRecords = backupData.attendanceRecords.size,
             added = added,
             updated = updated,
+            deleted = deleted,
             skipped = skipped,
-            conflicts = skipped
+            conflicts = deleted
         )
     }
 
     /**
      * 上传时的增量同步
+     * 本地所有记录（含软删除记录）都参与对比，确保删除操作也能同步到云端。
+     *
      * @param cloudRecords 云端记录
      * @param conflictStrategy 冲突解决策略
      * @return 需要上传的记录列表
@@ -238,31 +226,30 @@ class DataExporter(
         cloudRecords: List<AttendanceEntityBackup>,
         conflictStrategy: ConflictStrategy
     ): List<AttendanceEntityBackup> = withContext(Dispatchers.IO) {
-        val localRecords = attendanceDao.getAllRecordsSync()
+        val localRecords = attendanceDao.getAllRecordsIncludingDeletedSync()
         val cloudMap = cloudRecords.associateBy { it.date }
-        
+
         val recordsToUpload = mutableListOf<AttendanceEntityBackup>()
 
         for (localRecord in localRecords) {
             val cloudRecord = cloudMap[localRecord.date]
-            
+
             when {
-                // 云端不存在，需要上传
+                // 云端不存在：需要上传（包括删除标记，让云端同步删除）
                 cloudRecord == null -> {
                     recordsToUpload.add(localRecord.toBackup())
                 }
-                
+
                 // 存在冲突，根据策略处理
                 else -> {
+                    val localTime = localRecord.modifiedAt ?: 0L
                     val shouldUpload = when (conflictStrategy) {
-                        ConflictStrategy.NEWER_WINS -> {
-                            (localRecord.modifiedAt ?: 0L) > cloudRecord.modifiedAt
-                        }
+                        // 本地较新则上传（内容或删除状态可能已变化）
+                        ConflictStrategy.NEWER_WINS -> localTime > cloudRecord.modifiedAt
                         ConflictStrategy.LOCAL_WINS -> true
                         ConflictStrategy.CLOUD_WINS -> false
-                        ConflictStrategy.ASK_USER -> true // 默认使用本地
                     }
-                    
+
                     if (shouldUpload) {
                         recordsToUpload.add(localRecord.toBackup())
                     }
@@ -271,6 +258,31 @@ class DataExporter(
         }
 
         recordsToUpload
+    }
+
+    /**
+     * 从备份记录构造数据库实体
+     */
+    private fun toEntity(
+        record: AttendanceEntityBackup,
+        id: Long,
+        createdAt: Long,
+        isDeleted: Boolean
+    ): AttendanceEntity {
+        return AttendanceEntity(
+            id = id,
+            date = record.date,
+            checkInTime = record.checkInTime,
+            checkOutTime = record.checkOutTime,
+            checkInTimestamp = record.checkInTimestamp,
+            checkOutTimestamp = record.checkOutTimestamp,
+            note = record.note,
+            manualOvertimeHours = record.manualOvertimeHours,
+            manualExtraHours = record.manualExtraHours,
+            createdAt = createdAt,
+            modifiedAt = record.modifiedAt,
+            isDeleted = isDeleted
+        )
     }
 
     private fun AttendanceEntity.toBackup(): AttendanceEntityBackup {
@@ -284,7 +296,8 @@ class DataExporter(
             manualOvertimeHours = this.manualOvertimeHours,
             manualExtraHours = this.manualExtraHours,
             createdAt = this.createdAt,
-            modifiedAt = this.modifiedAt ?: this.createdAt
+            modifiedAt = this.modifiedAt ?: this.createdAt,
+            isDeleted = this.isDeleted
         )
     }
 
@@ -301,6 +314,7 @@ data class SyncSummary(
     val totalRecords: Int,
     val added: Int,
     val updated: Int,
+    val deleted: Int = 0,
     val skipped: Int,
     val conflicts: Int
 ) {
@@ -308,6 +322,7 @@ data class SyncSummary(
         val parts = mutableListOf<String>()
         if (added > 0) parts.add("新增 $added 条")
         if (updated > 0) parts.add("更新 $updated 条")
+        if (deleted > 0) parts.add("删除 $deleted 条")
         if (skipped > 0) parts.add("跳过 $skipped 条")
         return parts.joinToString("，")
     }

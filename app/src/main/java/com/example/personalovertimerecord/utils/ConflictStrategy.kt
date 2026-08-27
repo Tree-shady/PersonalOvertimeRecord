@@ -16,8 +16,7 @@ enum class SyncMode {
 enum class ConflictStrategy {
     NEWER_WINS,            // 较新者获胜：根据时间戳自动选择
     LOCAL_WINS,            // 本地优先：保留本地数据
-    CLOUD_WINS,            // 云端优先：使用云端数据
-    ASK_USER               // 询问用户：遇到冲突时弹出对话框让用户选择
+    CLOUD_WINS             // 云端优先：使用云端数据
 }
 
 /**

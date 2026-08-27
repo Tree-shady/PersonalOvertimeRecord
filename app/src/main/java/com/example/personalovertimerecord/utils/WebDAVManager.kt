@@ -210,8 +210,10 @@ class WebDAVManager(private val context: Context) {
                             try {
                                 EncryptionUtils.decryptString(content, decryptPassword)
                             } catch (ex: Exception) {
-                                AppLogger.w("WebDAV", "解密失败，可能数据未加密: ${ex.message}")
-                                content
+                                // 解密失败（数据未加密或密码错误）时返回 null，
+                                // 由调用方走"不使用密码重试"的兼容逻辑，避免把密文当明文解析
+                                AppLogger.w("WebDAV", "解密失败，可能数据未加密或密码错误: ${ex.message}")
+                                null
                             }
                         } else {
                             content

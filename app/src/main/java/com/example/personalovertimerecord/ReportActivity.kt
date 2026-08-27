@@ -44,6 +44,7 @@ class ReportActivity : AppCompatActivity() {
     private lateinit var settingsManager: SettingsManager
     private lateinit var settings: OvertimeSettings
     private var currentYear = Calendar.getInstance().get(Calendar.YEAR)
+    private var currentMonth = Calendar.getInstance().get(Calendar.MONTH) + 1
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -74,12 +75,41 @@ class ReportActivity : AppCompatActivity() {
         setSupportActionBar(binding.toolbar)
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         binding.toolbar.setNavigationOnClickListener { finish() }
-        binding.tvYear.text = "${currentYear}年"
+        binding.tvYear.text = "${currentYear}年${currentMonth}月"
+        
+        // 上个月：跨年时回退到上一年的12月
+        binding.btnPrevMonth.setOnClickListener {
+            currentMonth--
+            if (currentMonth < 1) {
+                currentMonth = 12
+                currentYear--
+            }
+            refreshReport()
+        }
+        
+        // 下个月：跨年时前进到下一年的1月
+        binding.btnNextMonth.setOnClickListener {
+            currentMonth++
+            if (currentMonth > 12) {
+                currentMonth = 1
+                currentYear++
+            }
+            refreshReport()
+        }
         
         // 导出按钮点击事件
         binding.btnExport.setOnClickListener {
             showExportDialog()
         }
+    }
+    
+    /**
+     * 刷新当前选中月份的报表
+     */
+    private fun refreshReport() {
+        binding.tvYear.text = "${currentYear}年${currentMonth}月"
+        val attendanceList = viewModel.allAttendance.value ?: emptyList()
+        updateReport(attendanceList)
     }
     
     private fun showExportDialog() {
@@ -163,7 +193,7 @@ class ReportActivity : AppCompatActivity() {
                     CsvExporter.exportMonthlySummary(
                         this@ReportActivity,
                         currentYear,
-                        Calendar.getInstance().get(Calendar.MONTH) + 1,
+                        currentMonth,
                         overtimeRecords,
                         settings
                     )
@@ -204,21 +234,24 @@ class ReportActivity : AppCompatActivity() {
     }
     
     private fun updateMonthlyOverview(attendanceList: List<Attendance>) {
-        val yearPrefix = "${currentYear}-"
-        val yearRecords = attendanceList.filter { it.date.startsWith(yearPrefix) }
+        val monthPrefix = String.format(Locale.getDefault(), "%04d-%02d", currentYear, currentMonth)
+        val monthRecords = attendanceList.filter { it.date.startsWith(monthPrefix) }
         
         var totalHours = 0.0
         var totalPay = 0.0
+        val overtimeDays = mutableSetOf<String>()
         
-        yearRecords.forEach { record ->
+        monthRecords.forEach { record ->
             val result = OvertimeCalculator.calculateOvertime(record, settings)
             totalHours += result.overtimeHours + result.extraHours
             totalPay += result.estimatedPay
+            // 有加班或加点的日期计入加班天数
+            if (result.overtimeHours > 0 || result.extraHours > 0) {
+                overtimeDays.add(record.date)
+            }
         }
         
-        val uniqueDays = yearRecords.map { it.date }.distinct().size
-        
-        binding.tvTotalDays.text = "$uniqueDays 天"
+        binding.tvTotalDays.text = "${overtimeDays.size} 天"
         binding.tvTotalHours.text = Formatter.formatHours(totalHours)
         binding.tvTotalPay.text = Formatter.formatMoney(totalPay)
     }
@@ -228,7 +261,7 @@ class ReportActivity : AppCompatActivity() {
             attendanceList,
             settings,
             currentYear,
-            Calendar.getInstance().get(Calendar.MONTH) + 1
+            currentMonth
         )
         
         binding.tvBaseSalary.text = Formatter.formatMoney(settings.baseSalary)
@@ -243,55 +276,63 @@ class ReportActivity : AppCompatActivity() {
         val yearPrefix = "${currentYear}-"
         val yearRecords = attendanceList.filter { it.date.startsWith(yearPrefix) }
         
-        val monthData = mutableListOf<Pair<String, Float>>()
+        val monthLabels = mutableListOf<String>()
+        val entries = mutableListOf<BarEntry>()
+        
         for (month in 1..12) {
             val monthStr = String.format(Locale.getDefault(), "%02d月", month)
             val monthPrefix = String.format(Locale.getDefault(), "%04d-%02d", currentYear, month)
             val monthRecords = yearRecords.filter { it.date.startsWith(monthPrefix) }
             
-            var totalHours = 0f
+            var overtimeHours = 0f
+            var extraHours = 0f
             monthRecords.forEach { record ->
                 if (record.manualOvertimeHours >= 0) {
-                    totalHours += record.manualOvertimeHours.toFloat()
+                    overtimeHours += record.manualOvertimeHours.toFloat()
                 }
                 if (record.manualExtraHours >= 0) {
-                    totalHours += record.manualExtraHours.toFloat()
+                    extraHours += record.manualExtraHours.toFloat()
                 }
             }
             
-            monthData.add(Pair(monthStr, totalHours))
+            monthLabels.add(monthStr)
+            // 堆叠柱状图：每个月份一根柱子，下半段为"加班"，上半段为"加点"
+            entries.add(BarEntry((month - 1).toFloat(), floatArrayOf(overtimeHours, extraHours)))
         }
         
-        val entries = monthData.mapIndexed { index, (_, hours) ->
-            BarEntry(index.toFloat(), hours)
-        }
-        
-        val dataSet = BarDataSet(entries, "月度加班时长").apply {
-            color = android.graphics.Color.parseColor("#6200EE")
+        val dataSet = BarDataSet(entries, "月度加班/加点时长").apply {
+            // 第一段(加班)紫色，第二段(加点)橙色
+            colors = listOf(
+                android.graphics.Color.parseColor("#6200EE"),
+                android.graphics.Color.parseColor("#FF9800")
+            )
             valueTextSize = 8f
+            setDrawValues(false)
+            stackLabels = arrayOf("加班", "加点")
         }
         
         binding.barChart.apply {
             data = BarData(dataSet)
             description.isEnabled = false
-            xAxis.valueFormatter = IndexAxisValueFormatter(monthData.map { it.first })
+            xAxis.valueFormatter = IndexAxisValueFormatter(monthLabels)
             xAxis.position = com.github.mikephil.charting.components.XAxis.XAxisPosition.BOTTOM
             xAxis.granularity = 1f
             axisLeft.axisMinimum = 0f
-            legend.isEnabled = false
+            legend.isEnabled = true
             invalidate()
         }
     }
     
     private fun setupPieChart(attendanceList: List<Attendance>) {
-        val yearPrefix = "${currentYear}-"
-        val yearRecords = attendanceList.filter { it.date.startsWith(yearPrefix) }
+        // 饼图按当前选中月份统计，形成月度加班类型分布
+        val monthPrefix = String.format(Locale.getDefault(), "%04d-%02d", currentYear, currentMonth)
+        val monthRecords = attendanceList.filter { it.date.startsWith(monthPrefix) }
         
         var normalHours = 0f
         var weekendHours = 0f
         var holidayHours = 0f
         
-        yearRecords.forEach { record ->
+        monthRecords.forEach { record ->
             val dayType = HolidayManager.getDayType(record.date)
             // 处理默认值：负数表示未设置，视为0
             val overtimeHours = if (record.manualOvertimeHours >= 0) record.manualOvertimeHours.toFloat() else 0f

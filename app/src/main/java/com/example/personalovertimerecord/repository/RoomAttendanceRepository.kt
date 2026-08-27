@@ -79,10 +79,10 @@ class RoomAttendanceRepository(
     }
     
     /**
-     * 删除记录
+     * 删除记录（软删除，标记 isDeleted=1 便于跨设备同步删除操作）
      */
     override suspend fun deleteAttendance(id: Long) {
-        dao.deleteById(id)
+        dao.markDeleted(id, System.currentTimeMillis())
     }
     
     /**
