@@ -1,4 +1,5 @@
 import java.util.Properties
+import java.util.Base64
 
 plugins {
     id("com.android.application")
@@ -67,7 +68,7 @@ android {
                 // 把 Secrets 里的 base64 keystore 解码到构建目录（临时文件，不入库）
                 val keystoreFile = layout.buildDirectory.file("release.keystore").get().asFile
                 keystoreFile.parentFile.mkdirs()
-                keystoreFile.writeBytes(java.util.Base64.getDecoder().decode(keystoreBase64))
+                keystoreFile.writeBytes(Base64.getDecoder().decode(keystoreBase64))
                 storeFile = keystoreFile
                 storePassword = keystorePassword
                 keyAlias = keyAlias
