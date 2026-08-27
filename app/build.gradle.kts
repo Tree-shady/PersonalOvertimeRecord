@@ -8,11 +8,20 @@ plugins {
 }
 
 // 版本号自动管理
+// 优先级：CI 传入（git tag，如 -PciVersionName=1.3.0 -PciVersionCode=10300） > 本地 version.properties 自动递增
 val versionPropsFile = file("version.properties")
 var versionCode = 1
 var versionName = "1.3.0.1"
 
-if (versionPropsFile.exists()) {
+val ciVersionName = project.findProperty("ciVersionName") as String?
+val ciVersionCode = project.findProperty("ciVersionCode") as String?
+
+if (!ciVersionName.isNullOrBlank() && !ciVersionCode.isNullOrBlank()) {
+    // CI（GitHub Actions）根据 git tag 传入版本号，不修改 version.properties
+    versionCode = ciVersionCode.toInt()
+    versionName = ciVersionName
+    println("🔢 CI version from tag: $versionName (build #$versionCode)")
+} else if (versionPropsFile.exists()) {
     val props = Properties()
     versionPropsFile.inputStream().use { props.load(it) }
     val buildNumber = props.getProperty("BUILD_NUMBER", "1").toInt()
@@ -40,9 +49,32 @@ if (versionPropsFile.exists()) {
     println("🔢 Version initialized: $versionName (build #$versionCode)")
 }
 
+// 签名配置：仅当 CI 注入环境变量（GitHub Secrets）时启用，本地构建保持不签名/自动签名，不受影响
+val keystoreBase64 = System.getenv("KEYSTORE_BASE64")
+val keystorePassword = System.getenv("KEYSTORE_PASSWORD")
+val keyAlias = System.getenv("KEY_ALIAS")
+val keyPassword = System.getenv("KEY_PASSWORD")
+val hasSigningEnv = !keystoreBase64.isNullOrBlank() && !keystorePassword.isNullOrBlank()
+        && !keyAlias.isNullOrBlank() && !keyPassword.isNullOrBlank()
+
 android {
     namespace = "com.example.personalovertimerecord"
     compileSdk = 36
+
+    signingConfigs {
+        if (hasSigningEnv) {
+            create("release") {
+                // 把 Secrets 里的 base64 keystore 解码到构建目录（临时文件，不入库）
+                val keystoreFile = layout.buildDirectory.file("release.keystore").get().asFile
+                keystoreFile.parentFile.mkdirs()
+                keystoreFile.writeBytes(java.util.Base64.getDecoder().decode(keystoreBase64))
+                storeFile = keystoreFile
+                storePassword = keystorePassword
+                keyAlias = keyAlias
+                keyPassword = keyPassword
+            }
+        }
+    }
     
     buildFeatures {
         viewBinding = true
@@ -66,6 +98,10 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // CI 注入签名环境变量时使用 release 签名；本地构建仍为未签名/调试行为
+            if (hasSigningEnv) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
     
