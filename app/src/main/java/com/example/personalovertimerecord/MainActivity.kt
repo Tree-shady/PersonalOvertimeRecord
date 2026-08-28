@@ -1,19 +1,25 @@
 package com.example.personalovertimerecord
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.view.View
 import android.view.animation.AnimationUtils
 import android.widget.ProgressBar
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.personalovertimerecord.adapter.AttendanceAdapter
 import com.example.personalovertimerecord.data.Attendance
+import com.example.personalovertimerecord.data.DayType
 import com.example.personalovertimerecord.data.OvertimeSettings
 import com.example.personalovertimerecord.data.SettingsManager
 import com.example.personalovertimerecord.data.db.AppDatabase
@@ -21,6 +27,7 @@ import com.example.personalovertimerecord.databinding.ActivityMainBinding
 import com.example.personalovertimerecord.dialog.AddOvertimeDialog
 import com.example.personalovertimerecord.utils.DateUtils
 import com.example.personalovertimerecord.utils.Formatter
+import com.example.personalovertimerecord.utils.HolidayManager
 import com.example.personalovertimerecord.utils.OvertimeCalculator
 import com.example.personalovertimerecord.utils.SyncDirection
 import com.example.personalovertimerecord.utils.SyncManager
@@ -57,6 +64,11 @@ class MainActivity : AppCompatActivity() {
     private var timeUpdateJob: kotlinx.coroutines.Job? = null
     private var startupCheckJob: kotlinx.coroutines.Job? = null
     private val handler = Handler()
+
+    // Android 13+ 通知权限请求（提醒/自动同步通知需要）
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { /* 用户选择即可，不强制处理结果 */ }
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -67,6 +79,8 @@ class MainActivity : AppCompatActivity() {
         settingsManager = SettingsManager(this)
         val database = AppDatabase.getDatabase(this)
         syncManager = SyncManager(this, settingsManager, database.attendanceDao())
+        
+        requestNotificationPermissionIfNeeded()
         
         initStatusViews()
         setupCalendar()
@@ -81,6 +95,15 @@ class MainActivity : AppCompatActivity() {
         runStartupChecks()
     }
     
+    private fun requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
     private fun initStatusViews() {
         statusCard = binding.statusCard
         tvStatus = binding.tvStatus
@@ -159,6 +182,7 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         stopTimeUpdates()
+        handler.removeCallbacksAndMessages(null)
     }
     
     private fun startTimeUpdates() {
@@ -344,10 +368,32 @@ class MainActivity : AppCompatActivity() {
         val checkInTime = existingAttendance.checkInTime
         val workHours = calculateWorkHours(checkInTime, currentTime)
         
+        // 与"登记即分类"规则保持一致：
+        // 工作日超出标准工时的部分记为"加点"（1.5倍），
+        // 周末/节假日全天记为"加班"（2倍/3倍）。
+        // 用户已手工填写的加班/加点时长优先，不被自动计算覆盖。
+        val settings = settingsManager.getSettings()
+        val dayType = HolidayManager.getDayType(dateStr)
+        val isWorkday = dayType == DayType.WORKDAY
+        val autoOvertime = if (isWorkday) 0.0 else workHours
+        val autoExtra = if (isWorkday) Math.max(0.0, workHours - settings.dailyWorkHours) else 0.0
+        
+        val finalOvertime = if (existingAttendance.manualOvertimeHours >= 0) {
+            existingAttendance.manualOvertimeHours
+        } else {
+            autoOvertime
+        }
+        val finalExtra = if (existingAttendance.manualExtraHours >= 0) {
+            existingAttendance.manualExtraHours
+        } else {
+            autoExtra
+        }
+        
         val newAttendance = existingAttendance.copy(
             checkOutTime = currentTime,
             checkOutTimestamp = System.currentTimeMillis(),
-            manualOvertimeHours = Math.max(0.0, workHours - settingsManager.getSettings().dailyWorkHours)
+            manualOvertimeHours = finalOvertime,
+            manualExtraHours = finalExtra
         )
         
         viewModel.updateAttendance(newAttendance)
@@ -453,6 +499,7 @@ class MainActivity : AppCompatActivity() {
                 SyncResult.RESTORE_FAILED -> "恢复数据失败"
                 SyncResult.NO_CHANGES -> "没有需要同步的更改"
                 SyncResult.CONFLICT -> "存在数据冲突，请手动处理"
+                SyncResult.ENCRYPTION_MISMATCH -> "云端数据已加密，请检查同步加密密码是否与上传设备一致"
             }
             
             Toast.makeText(this@MainActivity, message, Toast.LENGTH_SHORT).show()

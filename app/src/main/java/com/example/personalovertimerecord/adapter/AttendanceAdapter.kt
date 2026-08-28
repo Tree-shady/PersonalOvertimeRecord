@@ -73,7 +73,12 @@ class AttendanceAdapter(
         
         fun bind(attendance: Attendance, settings: OvertimeSettings) {
             tvDate.text = Formatter.formatDate(attendance.date)
-            tvDayType.text = Formatter.getDayTypeString(attendance.date)
+            // 以登记内容分类（加点→工作日，加班→周末/法定假日），与金额计算口径一致
+            tvDayType.text = Formatter.getEffectiveDayTypeString(
+                attendance.date,
+                if (attendance.manualOvertimeHours >= 0) attendance.manualOvertimeHours else 0.0,
+                if (attendance.manualExtraHours >= 0) attendance.manualExtraHours else 0.0
+            )
             
             // 如果是请假，显示请假信息，隐藏加班相关
             if (attendance.isLeave && attendance.leaveHours > 0) {
@@ -112,9 +117,14 @@ class AttendanceAdapter(
         
         override fun areContentsTheSame(oldItem: Attendance, newItem: Attendance): Boolean {
             return oldItem.date == newItem.date &&
+                   oldItem.checkInTime == newItem.checkInTime &&
+                   oldItem.checkOutTime == newItem.checkOutTime &&
                    oldItem.manualOvertimeHours == newItem.manualOvertimeHours &&
                    oldItem.manualExtraHours == newItem.manualExtraHours &&
-                   oldItem.note == newItem.note
+                   oldItem.note == newItem.note &&
+                   oldItem.isLeave == newItem.isLeave &&
+                   oldItem.leaveType == newItem.leaveType &&
+                   oldItem.leaveHours == newItem.leaveHours
         }
     }
 }

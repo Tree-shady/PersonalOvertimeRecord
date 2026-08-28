@@ -85,7 +85,8 @@ object BiometricManager {
                 
                 override fun onAuthenticationFailed() {
                     super.onAuthenticationFailed()
-                    onError("识别失败，请重试")
+                    // 非致命失败（如指纹未识别），系统弹窗会提示并允许重试；
+                    // 之前调用 onError 会让调用方把用户踢出应用，这里保持静默重试
                 }
             })
         

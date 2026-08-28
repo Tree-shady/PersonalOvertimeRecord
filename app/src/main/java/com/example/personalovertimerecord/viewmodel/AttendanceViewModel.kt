@@ -24,7 +24,13 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
     private val _allAttendanceState = MutableStateFlow<List<Attendance>>(emptyList())
     val allAttendanceState: StateFlow<List<Attendance>> = _allAttendanceState.asStateFlow()
     
-    val allAttendance: LiveData<List<Attendance>> get() = _allAttendanceState.asLiveData()
+    /**
+     * 缓存的 LiveData 单例。
+     * 注意：不能写成 getter 每次返回新的 asLiveData()，否则未被 observe 的实例
+     * 永远不会开始收集 StateFlow，导致 .value 恒为 null，UI 读取不到任何数据。
+     */
+    private val _allAttendanceLiveData: LiveData<List<Attendance>> = _allAttendanceState.asLiveData()
+    val allAttendance: LiveData<List<Attendance>> get() = _allAttendanceLiveData
     
     private val _errorMessage = MutableLiveData<String?>()
     val errorMessage: LiveData<String?> = _errorMessage

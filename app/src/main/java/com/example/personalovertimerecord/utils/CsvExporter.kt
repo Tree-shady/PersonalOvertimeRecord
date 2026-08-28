@@ -64,7 +64,7 @@ object CsvExporter {
                     append(",")
                     
                     // 加班类型
-                    append(escapeCsvField(record.dayType))
+                    append(escapeCsvField(getDayTypeLabel(record.dayType)))
                     append(",")
                     
                     // 加班费
@@ -84,9 +84,9 @@ object CsvExporter {
             
             val totalOvertime = records.sumByDouble { it.overtimeHours }
             val totalPay = records.sumByDouble { it.totalPay }
-            val normalDays = records.count { it.dayType == "平时" }
-            val weekendDays = records.count { it.dayType == "周末" }
-            val holidayDays = records.count { it.dayType == "法定节假日" }
+            val normalDays = records.count { getDayTypeLabel(it.dayType) == "平时" }
+            val weekendDays = records.count { getDayTypeLabel(it.dayType) == "周末" }
+            val holidayDays = records.count { getDayTypeLabel(it.dayType) == "法定节假日" }
             
             writer.write("总加班时长,${String.format("%.1f", totalOvertime)}小时\n")
             writer.write("总加班费,${String.format("%.2f", totalPay)}元\n")
@@ -186,12 +186,12 @@ object CsvExporter {
             
             val totalOvertime = records.sumByDouble { it.overtimeHours }
             val totalPay = records.sumByDouble { it.totalPay }
-            val normalDays = records.count { it.dayType == "平时" }
-            val weekendDays = records.count { it.dayType == "周末" }
-            val holidayDays = records.count { it.dayType == "法定节假日" }
-            val normalHours = records.filter { it.dayType == "平时" }.sumByDouble { it.overtimeHours }
-            val weekendHours = records.filter { it.dayType == "周末" }.sumByDouble { it.overtimeHours }
-            val holidayHours = records.filter { it.dayType == "法定节假日" }.sumByDouble { it.overtimeHours }
+            val normalDays = records.count { getDayTypeLabel(it.dayType) == "平时" }
+            val weekendDays = records.count { getDayTypeLabel(it.dayType) == "周末" }
+            val holidayDays = records.count { getDayTypeLabel(it.dayType) == "法定节假日" }
+            val normalHours = records.filter { getDayTypeLabel(it.dayType) == "平时" }.sumByDouble { it.overtimeHours }
+            val weekendHours = records.filter { getDayTypeLabel(it.dayType) == "周末" }.sumByDouble { it.overtimeHours }
+            val holidayHours = records.filter { getDayTypeLabel(it.dayType) == "法定节假日" }.sumByDouble { it.overtimeHours }
             
             writer.write("总加班时长,${String.format("%.1f", totalOvertime)}小时\n")
             writer.write("总加班费,${String.format("%.2f", totalPay)}元\n")
@@ -216,6 +216,20 @@ object CsvExporter {
         return file
     }
     
+    /**
+     * 将 OvertimeRecord.dayType 统一映射为中文标签。
+     * 注意：调用方可能传入枚举名（WORKDAY/WEEKEND/HOLIDAY）或中文（平时/周末/法定节假日），
+     * 此前按中文硬比较导致导出汇总天数恒为 0。
+     */
+    private fun getDayTypeLabel(dayType: String): String {
+        return when (dayType) {
+            "WORKDAY", "平时" -> "平时"
+            "WEEKEND", "周末" -> "周末"
+            "HOLIDAY", "法定节假日", "法定假日" -> "法定节假日"
+            else -> dayType
+        }
+    }
+
     /**
      * 转义CSV字段
      * 如果字段包含逗号、引号或换行符，需要用引号包裹并转义内部引号

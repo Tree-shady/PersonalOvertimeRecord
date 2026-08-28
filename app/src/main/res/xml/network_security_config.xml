@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
-    <!-- 允许明文流量（兼容旧服务） -->
-    <base-config cleartextTrafficPermitted="true">
+    <!-- 禁止明文流量：WebDAV 使用 Basic Auth，明文 HTTP 下密码与备份数据可被中间人窃取。
+         若确需使用 http:// 服务器，请改用支持 https 的 WebDAV 服务 -->
+    <base-config cleartextTrafficPermitted="false">
         <trust-anchors>
             <certificates src="system" />
         </trust-anchors>

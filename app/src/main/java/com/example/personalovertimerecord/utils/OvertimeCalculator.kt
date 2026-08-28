@@ -7,7 +7,26 @@ import com.example.personalovertimerecord.data.OvertimeResult
 import com.example.personalovertimerecord.data.OvertimeSettings
 
 object OvertimeCalculator {
-    
+
+    /**
+     * 根据登记内容确定"有效日期类型"（登记即分类）：
+     * - 登记了加班（overtimeHours > 0）→ 视为周末/节假日：
+     *   日历上是法定节假日按节假日（3倍），否则按周末（2倍）
+     * - 只登记了加点（extraHours > 0）→ 视为正常工作日（1.5倍）
+     * - 两者都未登记 → 按日历（HolidayManager）判定
+     */
+    fun effectiveDayType(date: String, overtimeHours: Double, extraHours: Double): DayType {
+        val calendarDayType = HolidayManager.getDayType(date)
+        return when {
+            overtimeHours > 0 -> when (calendarDayType) {
+                DayType.HOLIDAY -> DayType.HOLIDAY
+                else -> DayType.WEEKEND
+            }
+            extraHours > 0 -> DayType.WORKDAY
+            else -> calendarDayType
+        }
+    }
+
     fun calculateOvertime(
         record: OvertimeRecord,
         settings: OvertimeSettings
@@ -41,7 +60,8 @@ object OvertimeCalculator {
         extraHours: Double,
         settings: OvertimeSettings
     ): OvertimeResult {
-        val dayType = HolidayManager.getDayType(date)
+        // 以登记内容为准分类：登记"加点"按工作日、登记"加班"按周末/节假日
+        val dayType = effectiveDayType(date, overtimeHours, extraHours)
         
         var normalOvertime = 0.0
         var weekendOvertime = 0.0

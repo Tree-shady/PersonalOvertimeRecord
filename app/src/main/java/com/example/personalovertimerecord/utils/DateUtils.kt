@@ -37,6 +37,7 @@ object DateUtils {
 
     /**
      * 将 yyyy-MM-dd 格式的日期字符串解析为 Calendar
+     * 非法日期（如 2024-02-30、2024-13-01）返回 null，避免 Calendar 自动进位导致日期偏移
      */
     fun parseDateString(dateString: String): Calendar? {
         val parts = dateString.split("-")
@@ -46,7 +47,9 @@ object DateUtils {
         val month = parts[1].toIntOrNull() ?: return null
         val day = parts[2].toIntOrNull() ?: return null
 
-        return Calendar.getInstance().apply {
+        if (month < 1 || month > 12 || day < 1 || day > 31) return null
+
+        val calendar = Calendar.getInstance().apply {
             set(Calendar.YEAR, year)
             set(Calendar.MONTH, month - 1)
             set(Calendar.DAY_OF_MONTH, day)
@@ -55,6 +58,16 @@ object DateUtils {
             set(Calendar.SECOND, 0)
             set(Calendar.MILLISECOND, 0)
         }
+
+        // 回读校验：Calendar 会把 2024-02-30 静默进位为 2024-03-01，这里拦截
+        if (calendar.get(Calendar.YEAR) != year ||
+            calendar.get(Calendar.MONTH) != month - 1 ||
+            calendar.get(Calendar.DAY_OF_MONTH) != day
+        ) {
+            return null
+        }
+
+        return calendar
     }
 
     /**

@@ -202,7 +202,9 @@ class WebDAVManager(private val context: Context) {
                     connection.setRequestProperty("Accept", "*/*")
                 },
                 handleResponse = { connection ->
-                    if (connection.responseCode in 200..299) {
+                    val responseCode = connection.responseCode
+                    lastResponseCode = responseCode
+                    if (responseCode in 200..299) {
                         val content = BufferedReader(InputStreamReader(connection.inputStream, Charsets.UTF_8)).use { it.readText() }
                         AppLogger.d("WebDAV文件下载成功")
                         
@@ -219,13 +221,15 @@ class WebDAVManager(private val context: Context) {
                             content
                         }
                     } else {
-                        AppLogger.e("WebDAV文件不存在或下载失败: ${connection.responseCode}")
+                        AppLogger.e("WebDAV文件不存在或下载失败: $responseCode")
                         null
                     }
                 }
             )
         } catch (e: Exception) {
             AppLogger.e("WebDAV文件下载失败", e)
+            // 网络/IO 异常时清除响应码，防止残留上一次的 404 被误判为"云端无数据"
+            lastResponseCode = -1
             null
         }
     }

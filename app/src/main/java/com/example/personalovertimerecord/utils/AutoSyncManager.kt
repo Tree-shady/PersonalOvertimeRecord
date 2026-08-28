@@ -255,6 +255,8 @@ object AutoSyncManager {
                     with(Dispatchers.Main) {
                         onComplete?.invoke(false, "未配置WebDAV")
                     }
+                    // 未配置时也要重调度下一次闹钟，否则"单次闹钟链"从此断裂、自动同步永久失效
+                    scheduleSync(context)
                     return@launch
                 }
 
@@ -263,6 +265,8 @@ object AutoSyncManager {
                     with(Dispatchers.Main) {
                         onComplete?.invoke(false, "仅在WiFi下同步")
                     }
+                    // 非WiFi时不执行同步，但必须重调度下一次，否则链断裂
+                    scheduleSync(context)
                     return@launch
                 }
 
@@ -288,6 +292,8 @@ object AutoSyncManager {
                 with(Dispatchers.Main) {
                     onComplete?.invoke(false, e.message ?: "同步异常")
                 }
+                // 异常时同样重调度下一次，保持闹钟链不断
+                scheduleSync(context)
             }
         }
     }

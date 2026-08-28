@@ -19,13 +19,21 @@ object SalaryCalculator {
         val extraPay: Double,
         val totalOvertimePay: Double,
         val totalSalary: Double,
+        // 分项加班时长（小时）
+        val normalOvertime: Double,
+        val weekendOvertime: Double,
+        val holidayOvertime: Double,
         val totalOvertimeHours: Double,
         val totalExtraHours: Double,
         val totalHours: Double,
         val overtimeDays: Int,
         val normalDays: Int,
         val weekendDays: Int,
-        val holidayDays: Int
+        val holidayDays: Int,
+        // 报表展示用的倍率（取用户配置值，避免硬编码）
+        val overtimeRateNormal: Double,
+        val overtimeRateWeekend: Double,
+        val overtimeRateHoliday: Double
     )
     
     data class DailySalary(
@@ -55,11 +63,12 @@ object SalaryCalculator {
         var holidayDays = 0
         
         monthRecords.forEach { attendance ->
-            val dayType = HolidayManager.getDayType(attendance.date)
-            
             val overtime = if (attendance.manualOvertimeHours >= 0) attendance.manualOvertimeHours else 0.0
             val extra = if (attendance.manualExtraHours >= 0) attendance.manualExtraHours else 0.0
-            
+
+            // 与 OvertimeCalculator 保持一致：以登记内容分类（加点→工作日，加班→周末/节假日）
+            val dayType = OvertimeCalculator.effectiveDayType(attendance.date, overtime, extra)
+
             when (dayType) {
                 DayType.WORKDAY -> {
                     normalOvertime += overtime
@@ -109,9 +118,15 @@ object SalaryCalculator {
             totalExtraHours = extraHours,
             totalHours = normalOvertime + weekendOvertime + holidayOvertime + extraHours,
             overtimeDays = normalDays + weekendDays + holidayDays,
+            normalOvertime = normalOvertime,
+            weekendOvertime = weekendOvertime,
+            holidayOvertime = holidayOvertime,
             normalDays = normalDays,
             weekendDays = weekendDays,
-            holidayDays = holidayDays
+            holidayDays = holidayDays,
+            overtimeRateNormal = settings.overtimeRateNormal,
+            overtimeRateWeekend = settings.overtimeRateWeekend,
+            overtimeRateHoliday = settings.overtimeRateHoliday
         )
     }
     
@@ -120,9 +135,11 @@ object SalaryCalculator {
         settings: OvertimeSettings
     ): List<DailySalary> {
         return attendanceList.map { attendance ->
-            val dayType = HolidayManager.getDayType(attendance.date)
             val overtime = if (attendance.manualOvertimeHours >= 0) attendance.manualOvertimeHours else 0.0
             val extra = if (attendance.manualExtraHours >= 0) attendance.manualExtraHours else 0.0
+
+            // 与 OvertimeCalculator 保持一致：以登记内容分类（加点→工作日，加班→周末/节假日）
+            val dayType = OvertimeCalculator.effectiveDayType(attendance.date, overtime, extra)
             
             val performanceBonus = settings.baseSalary * (settings.performancePercent / 100.0)
             val totalMonthlySalary = settings.baseSalary + performanceBonus
@@ -180,15 +197,15 @@ object SalaryCalculator {
             appendLine("🎯 绩效奖金: ${Formatter.formatMoney(report.performanceBonus)}")
             appendLine()
             appendLine("📈 加班工资明细:")
-            appendLine("  工作日加班: ${String.format(Locale.getDefault(), "%.1f", report.normalOvertimePay)}h × 1.5 = ${Formatter.formatMoney(report.normalOvertimePay)}")
-            appendLine("  周末加班: ${String.format(Locale.getDefault(), "%.1f", report.weekendOvertimePay)}h × 2.0 = ${Formatter.formatMoney(report.weekendOvertimePay)}")
-            appendLine("  法定假日: ${String.format(Locale.getDefault(), "%.1f", report.holidayOvertimePay)}h × 3.0 = ${Formatter.formatMoney(report.holidayOvertimePay)}")
-            appendLine("  加点工资: ${String.format(Locale.getDefault(), "%.1f", report.totalExtraHours)}h × 1.5 = ${Formatter.formatMoney(report.extraPay)}")
+            appendLine("  工作日加班: ${String.format(Locale.getDefault(), "%.1f", report.normalOvertime)}h × ${report.overtimeRateNormal} = ${Formatter.formatMoney(report.normalOvertimePay)}")
+            appendLine("  周末加班: ${String.format(Locale.getDefault(), "%.1f", report.weekendOvertime)}h × ${report.overtimeRateWeekend} = ${Formatter.formatMoney(report.weekendOvertimePay)}")
+            appendLine("  法定假日: ${String.format(Locale.getDefault(), "%.1f", report.holidayOvertime)}h × ${report.overtimeRateHoliday} = ${Formatter.formatMoney(report.holidayOvertimePay)}")
+            appendLine("  加点工资: ${String.format(Locale.getDefault(), "%.1f", report.totalExtraHours)}h × ${report.overtimeRateNormal} = ${Formatter.formatMoney(report.extraPay)}")
             appendLine()
             appendLine("⏱️ 加班统计:")
-            appendLine("  工作日加班: ${report.normalDays}天 (${String.format(Locale.getDefault(), "%.1f", report.normalOvertimePay)}h)")
-            appendLine("  周末加班: ${report.weekendDays}天 (${String.format(Locale.getDefault(), "%.1f", report.weekendOvertimePay)}h)")
-            appendLine("  法定假日: ${report.holidayDays}天 (${String.format(Locale.getDefault(), "%.1f", report.holidayOvertimePay)}h)")
+            appendLine("  工作日加班: ${report.normalDays}天 (${String.format(Locale.getDefault(), "%.1f", report.normalOvertime)}h)")
+            appendLine("  周末加班: ${report.weekendDays}天 (${String.format(Locale.getDefault(), "%.1f", report.weekendOvertime)}h)")
+            appendLine("  法定假日: ${report.holidayDays}天 (${String.format(Locale.getDefault(), "%.1f", report.holidayOvertime)}h)")
             appendLine()
             appendLine("📋 总计:")
             appendLine("  总加班时长: ${Formatter.formatHours(report.totalOvertimeHours)}")

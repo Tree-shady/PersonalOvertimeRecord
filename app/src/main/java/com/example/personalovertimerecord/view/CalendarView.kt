@@ -12,6 +12,7 @@ import com.example.personalovertimerecord.R
 import com.example.personalovertimerecord.data.Attendance
 import com.example.personalovertimerecord.data.OvertimeSettings
 import com.example.personalovertimerecord.data.SettingsManager
+import com.example.personalovertimerecord.utils.OvertimeCalculator
 import java.util.Calendar
 
 class CalendarView @JvmOverloads constructor(
@@ -193,30 +194,11 @@ class CalendarView @JvmOverloads constructor(
             
             // 绘制加班信息
             if (hasData && attendance != null) {
-                // 使用缓存的 settings，避免频繁读取 SharedPreferences
-                val settings = cachedSettings
-                val baseSalary = settings?.baseSalary ?: 5000.0
-                val monthlyWorkDays = settings?.monthlyWorkDays ?: 21.75
-                val dailyWorkHours = settings?.dailyWorkHours ?: 8.0
-                val overtimeRateNormal = settings?.overtimeRateNormal ?: 1.5
-                val performancePercent = settings?.performancePercent ?: 0.0
-                
-                // 与 OvertimeCalculator 保持一致的计算方式
-                val performanceBonus = baseSalary * (performancePercent / 100.0)
-                val totalMonthlySalary = baseSalary + performanceBonus
-                val monthlyTotalHours = monthlyWorkDays * dailyWorkHours
-                
-                // 计算时薪
-                val hourlyWage = if (monthlyTotalHours > 0) {
-                    totalMonthlySalary / monthlyTotalHours
-                } else {
-                    0.0
-                }
-                
-                // 计算费用（加点也乘以加班倍率，与 OvertimeCalculator 保持一致）
-                val overtimePay = overtimeHours * hourlyWage * overtimeRateNormal
-                val extraPay = extraHours * hourlyWage * overtimeRateNormal
-                val totalPay = overtimePay + extraPay
+                // 复用 OvertimeCalculator 计算金额，保证与列表/报表口径一致
+                // （周末按 2 倍、节假日按 3 倍计算；此前这里错误地固定按 1.5 倍）
+                val settings = cachedSettings ?: OvertimeSettings()
+                val result = OvertimeCalculator.calculateOvertime(attendance, settings)
+                val totalPay = result.estimatedPay
                 
                 // 显示加班和加点时长
                 var infoY = centerY + cellHeight / 8

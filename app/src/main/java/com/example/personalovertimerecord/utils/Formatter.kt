@@ -48,6 +48,18 @@ object Formatter {
     }
 
     /**
+     * 按"登记即分类"规则获取日期类型的中文名称：
+     * 登记了加点→工作日；登记了加班→周末/法定假日；否则按日历
+     */
+    fun getEffectiveDayTypeString(dateStr: String, overtimeHours: Double, extraHours: Double): String {
+        return when (OvertimeCalculator.effectiveDayType(dateStr, overtimeHours, extraHours)) {
+            DayType.HOLIDAY -> "法定假日"
+            DayType.WEEKEND -> "周末"
+            DayType.WORKDAY -> "工作日"
+        }
+    }
+
+    /**
      * 获取请假类型的显示名称
      */
     fun getLeaveTypeDisplayName(leaveType: String?): String {

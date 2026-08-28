@@ -50,7 +50,7 @@ abstract class AppDatabase : RoomDatabase() {
                 "overtime_database"
             )
                 .openHelperFactory(factory)
-                .addMigrations(MIGRATION_1_2, MIGRATION_3_4)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                 .fallbackToDestructiveMigration()
                 .build()
         }
@@ -61,7 +61,7 @@ abstract class AppDatabase : RoomDatabase() {
                 AppDatabase::class.java,
                 "overtime_database_unencrypted"
             )
-                .addMigrations(MIGRATION_1_2, MIGRATION_3_4)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                 .fallbackToDestructiveMigration()
                 .build()
         }
@@ -72,6 +72,22 @@ abstract class AppDatabase : RoomDatabase() {
                 // 添加 modifiedAt 列，默认值为 NULL
                 database.execSQL(
                     "ALTER TABLE attendance_records ADD COLUMN modifiedAt INTEGER"
+                )
+            }
+        }
+
+        // 从版本2迁移到版本3，添加请假相关字段（isLeave / leaveType / leaveHours）
+        // 此前缺失该迁移，配合 fallbackToDestructiveMigration 会导致老用户升级时整库被删
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    "ALTER TABLE attendance_records ADD COLUMN isLeave INTEGER NOT NULL DEFAULT 0"
+                )
+                database.execSQL(
+                    "ALTER TABLE attendance_records ADD COLUMN leaveType TEXT"
+                )
+                database.execSQL(
+                    "ALTER TABLE attendance_records ADD COLUMN leaveHours REAL NOT NULL DEFAULT 0"
                 )
             }
         }

@@ -21,7 +21,19 @@ data class BackupData(
     val exportTime: Long = System.currentTimeMillis(),
     val settings: OvertimeSettings,
     val attendanceRecords: List<AttendanceEntityBackup>
-)
+) {
+    /**
+     * Gson 通过 Unsafe/反射构造对象，会绕过 Kotlin 的非空默认值；
+     * 当 JSON 缺少某字段时该字段运行时为 null。此方法补齐安全默认值，
+     * 防止下游（saveSettings / records.size / 遍历）NPE 崩溃。
+     */
+    fun sanitized(): BackupData = BackupData(
+        version = this.version,
+        exportTime = this.exportTime,
+        settings = this.settings ?: OvertimeSettings(),
+        attendanceRecords = this.attendanceRecords ?: emptyList()
+    )
+}
 
 data class AttendanceEntityBackup(
     val date: String,
@@ -89,10 +101,15 @@ class DataExporter(
                 context.contentResolver.openInputStream(uri)?.use { inputStream ->
                     BufferedReader(InputStreamReader(inputStream)).use { reader ->
                         val type = object : TypeToken<BackupData>() {}.type
-                        val backupData: BackupData = gson.fromJson(reader, type)
+                        val backupData: BackupData? = gson.fromJson(reader, type)
+                        if (backupData == null) {
+                            throw Exception("备份文件格式无效")
+                        }
+                        // Gson 反序列化可能产生 null 字段，补齐安全默认值防止 NPE
+                        val safeBackup = backupData.sanitized()
 
                         withContext(Dispatchers.Main) {
-                            onSuccess(backupData)
+                            onSuccess(safeBackup)
                         }
                     }
                 } ?: throw Exception("无法打开文件")
@@ -242,7 +259,9 @@ class DataExporter(
 
                 // 存在冲突，根据策略处理
                 else -> {
-                    val localTime = localRecord.modifiedAt ?: 0L
+                    // 与 toBackup() 一致：旧记录 modifiedAt 可能为 NULL，用 createdAt 兜底，
+                    // 避免老数据永远判定为"云端较新"而丢失本地修改
+                    val localTime = localRecord.modifiedAt ?: localRecord.createdAt
                     val shouldUpload = when (conflictStrategy) {
                         // 本地较新则上传（内容或删除状态可能已变化）
                         ConflictStrategy.NEWER_WINS -> localTime > cloudRecord.modifiedAt

@@ -23,6 +23,18 @@ object PdfExporter {
     private const val PAGE_HEIGHT = 842 // A4 height in points
     private const val MARGIN = 40f
     private const val LINE_HEIGHT = 20f
+
+    /**
+     * 将 OvertimeRecord.dayType（枚举名 WORKDAY/WEEKEND/HOLIDAY 或中文）统一映射为中文标签
+     */
+    private fun getDayTypeLabel(dayType: String): String {
+        return when (dayType) {
+            "WORKDAY", "平时" -> "平时"
+            "WEEKEND", "周末" -> "周末"
+            "HOLIDAY", "法定节假日", "法定假日" -> "法定节假日"
+            else -> dayType
+        }
+    }
     
     /**
      * 导出考勤记录为PDF文件
@@ -174,14 +186,16 @@ object PdfExporter {
         
         val dateFormat = SimpleDateFormat("MM-dd", Locale.getDefault())
         val fullDateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        // 必须带时间部分解析，否则打卡时间会被丢弃，PDF 里恒显示 00:00
+        val dateTimeFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
         val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
         
         val columns = listOf(
             dateFormat.format(fullDateFormat.parse(record.date) ?: Date()),
-            record.checkInTime?.let { timeFormat.format(fullDateFormat.parse(record.date + " " + it) ?: Date()) } ?: "--:--",
-            record.checkOutTime?.let { timeFormat.format(fullDateFormat.parse(record.date + " " + it) ?: Date()) } ?: "--:--",
+            record.checkInTime?.let { timeFormat.format(dateTimeFormat.parse(record.date + " " + it) ?: Date()) } ?: "--:--",
+            record.checkOutTime?.let { timeFormat.format(dateTimeFormat.parse(record.date + " " + it) ?: Date()) } ?: "--:--",
             String.format("%.1f小时", record.overtimeHours),
-            record.dayType,
+            getDayTypeLabel(record.dayType),
             String.format("¥%.2f", record.totalPay)
         )
         
@@ -231,9 +245,9 @@ object PdfExporter {
         
         val totalOvertime = records.sumOf { it.overtimeHours }
         val totalPay = records.sumOf { it.totalPay }
-        val normalDays = records.count { it.dayType == "平时" }
-        val weekendDays = records.count { it.dayType == "周末" }
-        val holidayDays = records.count { it.dayType == "法定节假日" }
+        val normalDays = records.count { getDayTypeLabel(it.dayType) == "平时" }
+        val weekendDays = records.count { getDayTypeLabel(it.dayType) == "周末" }
+        val holidayDays = records.count { getDayTypeLabel(it.dayType) == "法定节假日" }
         
         val summaryItems = listOf(
             "总加班时长: ${String.format("%.1f", totalOvertime)} 小时",

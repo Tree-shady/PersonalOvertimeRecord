@@ -24,7 +24,9 @@ enum class SyncResult {
     DOWNLOAD_FAILED,
     RESTORE_FAILED,
     NO_CHANGES,
-    CONFLICT
+    CONFLICT,
+    /** 云端数据已加密，但本机同步加密密码错误或未配置 */
+    ENCRYPTION_MISMATCH
 }
 
 /**
@@ -92,6 +94,8 @@ class SyncManager(
 
     /**
      * 上传备份到 WebDAV
+     * 安全约束：仅当确认云端没有数据（404）或能成功解析云端数据时才上传，
+     * 下载失败/解密失败一律中止上传，避免本地数据覆盖式冲掉云端备份。
      */
     private suspend fun uploadBackup(config: WebDAVConfig, options: SyncOptions): SyncResult {
         return try {
@@ -99,8 +103,18 @@ class SyncManager(
             val settings = settingsManager.getSettings()
             val encryptPassword = getEncryptPassword(settings)
 
-            // 检查云端是否有现有数据
-            val cloudContent = webDAVManager.downloadFile(config, encryptPassword)
+            // 读取云端现状
+            var cloudContent = webDAVManager.downloadFile(config, encryptPassword)
+
+            // 解密失败时尝试兼容旧版未加密数据（仅当下载本身成功、响应码为 200）
+            if (cloudContent == null && encryptPassword != null && WebDAVManager.lastResponseCode == 200) {
+                cloudContent = webDAVManager.downloadFile(config, null)
+                if (cloudContent != null && !isJsonLike(cloudContent)) {
+                    // 不用密码能读到 Base64 密文 → 云端已加密但密码不匹配，禁止覆盖
+                    AppLogger.e("云端数据已加密但密码不匹配，已中止上传以避免覆盖")
+                    return SyncResult.ENCRYPTION_MISMATCH
+                }
+            }
 
             var recordsToUpload: List<AttendanceEntityBackup>
             var cloudRecords: List<AttendanceEntityBackup> = emptyList()
@@ -110,24 +124,39 @@ class SyncManager(
             if (cloudContent != null) {
                 try {
                     val type = object : TypeToken<BackupData>() {}.type
-                    val cloudBackup: BackupData = gson.fromJson(cloudContent, type)
-                    cloudRecords = cloudBackup.attendanceRecords
-                    cloudSettings = cloudBackup.settings
+                    val cloudBackup = (gson.fromJson(cloudContent, type) as? BackupData)?.sanitized()
+                    if (cloudBackup != null) {
+                        cloudRecords = cloudBackup.attendanceRecords
+                        cloudSettings = cloudBackup.settings
+                    }
                 } catch (e: Exception) {
                     AppLogger.d("解析云端数据失败，将进行全量上传: ${e.message}")
+                }
+            } else {
+                // 无法读到云端数据：只有确认是"文件不存在(404)"才允许全量上传，
+                // 其它失败（网络错误、服务器 5xx 等）一律中止，防止覆盖云端备份
+                if (WebDAVManager.lastResponseCode != 404) {
+                    AppLogger.e("上传前无法读取云端数据（HTTP ${WebDAVManager.lastResponseCode}），已中止上传")
+                    return SyncResult.DOWNLOAD_FAILED
                 }
             }
 
             // 根据策略获取需要上传的记录
             if (cloudRecords.isNotEmpty() && options.mode == SyncMode.INCREMENTAL_MERGE) {
                 // 增量模式：只上传有变化的记录（含删除标记记录）
-                recordsToUpload = dataExporter.getRecordsToUpload(cloudRecords, options.conflictStrategy)
+                val changedRecords = dataExporter.getRecordsToUpload(cloudRecords, options.conflictStrategy)
 
-                if (recordsToUpload.isEmpty()) {
+                if (changedRecords.isEmpty()) {
                     AppLogger.d("没有需要上传的记录")
                     settingsManager.saveLastSyncTime(System.currentTimeMillis())
                     return SyncResult.NO_CHANGES
                 }
+
+                // 关键修复：增量记录必须与云端现有记录合并成完整集合再上传，
+                // 否则云端文件会被"仅变更记录"替换，导致跨设备/重装后其余数据丢失
+                val mergedByDate = cloudRecords.associateBy { it.date }.toMutableMap()
+                changedRecords.forEach { mergedByDate[it.date] = it }
+                recordsToUpload = mergedByDate.values.toList()
             } else {
                 // 全量模式：上传所有本地记录（含软删除记录，保证删除操作不丢失）
                 val localRecords = attendanceDao.getAllRecordsIncludingDeletedSync()
@@ -187,8 +216,15 @@ class SyncManager(
                 return SyncResult.DOWNLOAD_FAILED
             }
 
+            // 内容不是 JSON（Base64 密文），说明云端数据已加密但解密失败（密码错误或未配置）
+            if (!isJsonLike(content)) {
+                AppLogger.e("云端数据疑似已加密，但解密失败：请检查同步加密密码是否与上传设备一致")
+                return SyncResult.ENCRYPTION_MISMATCH
+            }
+
             val type = object : TypeToken<BackupData>() {}.type
-            val backupData: BackupData = gson.fromJson(content, type)
+            val backupData: BackupData = (gson.fromJson(content, type) as? BackupData)
+                ?.sanitized() ?: return SyncResult.RESTORE_FAILED
 
             when (options.mode) {
                 SyncMode.FULL_REPLACE, SyncMode.CLOUD_PRIORITY -> {
@@ -289,8 +325,15 @@ class SyncManager(
                 return SyncResult.DOWNLOAD_FAILED
             }
 
+            // 内容不是 JSON（Base64 密文），说明云端数据已加密但解密失败（密码错误或未配置）
+            if (!isJsonLike(cloudContent)) {
+                AppLogger.e("云端数据疑似已加密，但解密失败：请检查同步加密密码是否与上传设备一致")
+                return SyncResult.ENCRYPTION_MISMATCH
+            }
+
             val type = object : TypeToken<BackupData>() {}.type
-            val cloudBackup: BackupData = gson.fromJson(cloudContent, type)
+            val cloudBackup: BackupData = (gson.fromJson(cloudContent, type) as? BackupData)
+                ?.sanitized() ?: return SyncResult.RESTORE_FAILED
 
             // 获取本地完整状态（活记录 + 软删除记录，保证删除操作参与合并）
             val localRecords = attendanceDao.getAllRecordsIncludingDeletedSync()
@@ -324,11 +367,15 @@ class SyncManager(
                 }
             }
 
+            // 合并结果上传：settings 按策略决定来源，
+            // 避免本地设置的修改在双向同步中永远无法回传云端
+            val mergedSettings = if (options.syncSettings) settings else cloudBackup.settings
+
             // 上传合并结果
             val mergedBackup = BackupData(
                 version = SYNC_DATA_VERSION,
                 exportTime = System.currentTimeMillis(),
-                settings = cloudBackup.settings,
+                settings = mergedSettings,
                 attendanceRecords = mergedRecords
             )
 
@@ -338,6 +385,11 @@ class SyncManager(
             if (success) {
                 // 把合并结果写回本地数据库，确保本地与云端一致
                 dataExporter.restoreDataIncremental(mergedBackup, ConflictStrategy.NEWER_WINS)
+
+                // 双向合并后同步设置（与 uploadBackup/downloadAndRestore 行为一致）
+                if (options.syncSettings) {
+                    settingsManager.saveSettings(mergedSettings)
+                }
 
                 settingsManager.saveLastSyncTime(System.currentTimeMillis())
                 AppLogger.d("智能合并成功，共 ${mergedRecords.size} 条记录" + if (encryptPassword != null) " (已加密)" else " (未加密)")
@@ -363,10 +415,20 @@ class SyncManager(
             ConflictStrategy.LOCAL_WINS -> local.toBackup()
             ConflictStrategy.CLOUD_WINS -> cloud
             ConflictStrategy.NEWER_WINS -> {
-                val localTime = local.modifiedAt ?: 0L
+                // 与 toBackup() 一致：旧记录 modifiedAt 可能为 NULL，用 createdAt 兜底
+                val localTime = local.modifiedAt ?: local.createdAt
                 if (cloud.modifiedAt > localTime) cloud else local.toBackup()
             }
         }
+    }
+
+    /**
+     * 判断下载内容是否为 JSON 格式
+     * 加密备份内容为 Base64 文本（非 JSON），据此可区分"未加密数据"与"密码错误的加密数据"
+     */
+    private fun isJsonLike(content: String): Boolean {
+        val trimmed = content.trimStart()
+        return trimmed.startsWith("{") || trimmed.startsWith("[")
     }
 
     private fun AttendanceEntity.toBackup(): AttendanceEntityBackup {

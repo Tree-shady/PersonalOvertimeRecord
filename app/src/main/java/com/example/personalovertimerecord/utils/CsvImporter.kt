@@ -42,9 +42,9 @@ object CsvImporter {
                 while (line != null) {
                     lineNumber++
                     
-                    // 第一行作为表头
+                    // 第一行作为表头（剥离 UTF-8 BOM，否则"自己导出的文件"表头匹配失败）
                     if (lineNumber == 1) {
-                        headers = parseCsvLine(line)
+                        headers = parseCsvLine(line.removePrefix("\uFEFF"))
                         if (!validateHeaders(headers)) {
                             errors.add("第1行：无效的表头格式")
                         }
@@ -79,14 +79,30 @@ object CsvImporter {
                     line = reader.readLine()
                 }
                 
-                // 批量插入数据库
+                // 批量插入数据库（按日期去重：已存在的日期跳过，
+                // 避免插入重复记录破坏"按日期唯一"的同步/查询假设）
                 if (entities.isNotEmpty()) {
-                    withContext(Dispatchers.IO) {
+                    val toInsert = withContext(Dispatchers.IO) {
                         val app = context.applicationContext as com.example.personalovertimerecord.OvertimeApplication
                         val attendanceDao = app.database.attendanceDao()
-                        attendanceDao.insertAll(entities)
+                        val existingDates = attendanceDao.getAllRecordsSync().map { it.date }.toSet()
+                        val seenDates = mutableSetOf<String>()
+                        entities.filter { entity ->
+                            entity.date !in existingDates && seenDates.add(entity.date)
+                        }
                     }
-                    importedCount = entities.size
+                    if (toInsert.isNotEmpty()) {
+                        withContext(Dispatchers.IO) {
+                            val app = context.applicationContext as com.example.personalovertimerecord.OvertimeApplication
+                            val attendanceDao = app.database.attendanceDao()
+                            attendanceDao.insertAll(toInsert)
+                        }
+                    }
+                    importedCount = toInsert.size
+                    val skippedCount = entities.size - toInsert.size
+                    if (skippedCount > 0) {
+                        errors.add("跳过 $skippedCount 条已存在的重复日期记录")
+                    }
                 }
             }
             
@@ -115,29 +131,35 @@ object CsvImporter {
     }
     
     /**
-     * 解析CSV行
+     * 解析CSV行（标准状态机：支持引号包裹字段、"" 转义引号；
+     * 之前只翻转 inQuotes 并丢弃引号，导致含引号的备注导出后无法再导入）
      */
     private fun parseCsvLine(line: String): List<String> {
         val values = mutableListOf<String>()
-        var currentValue = StringBuilder()
+        val current = StringBuilder()
         var inQuotes = false
-        
-        for (char in line) {
+        var i = 0
+        while (i < line.length) {
+            val c = line[i]
             when {
-                char == '"' -> {
-                    inQuotes = !inQuotes
+                c == '"' -> {
+                    if (inQuotes && i + 1 < line.length && line[i + 1] == '"') {
+                        // 转义引号 "" → "
+                        current.append('"')
+                        i++
+                    } else {
+                        inQuotes = !inQuotes
+                    }
                 }
-                char == ',' && !inQuotes -> {
-                    values.add(currentValue.toString().trim())
-                    currentValue = StringBuilder()
+                c == ',' && !inQuotes -> {
+                    values.add(current.toString().trim())
+                    current.setLength(0)
                 }
-                else -> {
-                    currentValue.append(char)
-                }
+                else -> current.append(c)
             }
+            i++
         }
-        values.add(currentValue.toString().trim())
-        
+        values.add(current.toString().trim())
         return values
     }
     

@@ -536,7 +536,16 @@ class SettingsActivity : AppCompatActivity() {
         } else {
             serverUrl
         }
-        
+
+        // 明文 HTTP 已禁止（见 network_security_config.xml），提示用户改用 https
+        if (normalizedServerUrl.startsWith("http://")) {
+            Toast.makeText(
+                this,
+                "应用已禁止明文 HTTP 流量，请使用 https:// 地址",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+
         return WebDAVConfig(
             serverUrl = normalizedServerUrl,
             username = username,

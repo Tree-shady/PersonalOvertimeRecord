@@ -34,6 +34,10 @@ class ReminderReceiver : BroadcastReceiver() {
                 when (requestCode) {
                     2001 -> ReminderManager.scheduleWorkReminder(context)
                     2002 -> ReminderManager.scheduleOffWorkReminder(context)
+                    else -> {
+                        ReminderManager.scheduleWorkReminder(context)
+                        ReminderManager.scheduleOffWorkReminder(context)
+                    }
                 }
                 return
             }
@@ -42,10 +46,14 @@ class ReminderReceiver : BroadcastReceiver() {
         // 显示通知
         ReminderManager.showNotification(context, title, message, requestCode)
         
-        // 重新调度下一天的提醒
+        // 重新调度下一天的提醒（缺省分支兜底：即使 extras 被系统剥离也要保持提醒链不断）
         when (requestCode) {
             2001 -> ReminderManager.scheduleWorkReminder(context)
             2002 -> ReminderManager.scheduleOffWorkReminder(context)
+            else -> {
+                ReminderManager.scheduleWorkReminder(context)
+                ReminderManager.scheduleOffWorkReminder(context)
+            }
         }
     }
 }

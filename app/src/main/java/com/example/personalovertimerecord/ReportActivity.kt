@@ -14,7 +14,6 @@ import com.example.personalovertimerecord.data.OvertimeSettings
 import com.example.personalovertimerecord.data.SettingsManager
 import com.example.personalovertimerecord.databinding.ActivityReportBinding
 import com.example.personalovertimerecord.utils.CsvExporter
-import com.example.personalovertimerecord.utils.HolidayManager
 import com.example.personalovertimerecord.utils.Formatter
 import com.example.personalovertimerecord.utils.OvertimeCalculator
 import com.example.personalovertimerecord.utils.PdfExporter
@@ -135,25 +134,33 @@ class ReportActivity : AppCompatActivity() {
             try {
                 val file = withContext(Dispatchers.IO) {
                     val records = viewModel.allAttendance.value ?: emptyList()
-                    val overtimeRecords = records.map { attendance ->
-                        OvertimeRecord(
-                            id = attendance.id.toString(),
-                            date = attendance.date,
-                            checkInTime = attendance.checkInTime,
-                            checkOutTime = attendance.checkOutTime,
-                            overtimeHours = if (attendance.manualOvertimeHours >= 0) attendance.manualOvertimeHours else 0.0,
-                            extraHours = if (attendance.manualExtraHours >= 0) attendance.manualExtraHours else 0.0,
-                            note = attendance.note,
-                            dayType = HolidayManager.getDayType(attendance.date).name,
-                            totalPay = OvertimeCalculator.calculateOvertime(attendance, settings).estimatedPay
-                        )
-                    }.filter { it.overtimeHours > 0 }
+                    // 仅导出当前选中月份的数据（此前导出的是全年数据）
+                    val monthPrefix = String.format(Locale.getDefault(), "%04d-%02d", currentYear, currentMonth)
+                    val overtimeRecords = records
+                        .filter { it.date.startsWith(monthPrefix) }
+                        .map { attendance ->
+                            OvertimeRecord(
+                                id = attendance.id.toString(),
+                                date = attendance.date,
+                                checkInTime = attendance.checkInTime,
+                                checkOutTime = attendance.checkOutTime,
+                                overtimeHours = if (attendance.manualOvertimeHours >= 0) attendance.manualOvertimeHours else 0.0,
+                                extraHours = if (attendance.manualExtraHours >= 0) attendance.manualExtraHours else 0.0,
+                                note = attendance.note,
+                                dayType = OvertimeCalculator.effectiveDayType(
+                                    attendance.date,
+                                    if (attendance.manualOvertimeHours >= 0) attendance.manualOvertimeHours else 0.0,
+                                    if (attendance.manualExtraHours >= 0) attendance.manualExtraHours else 0.0
+                                ).name,
+                                totalPay = OvertimeCalculator.calculateOvertime(attendance, settings).estimatedPay
+                            )
+                        }
                     
                     PdfExporter.exportToPdf(
                         this@ReportActivity,
                         overtimeRecords,
                         settings,
-                        "${currentYear}年考勤报告"
+                        "${currentYear}年${currentMonth}月考勤报告"
                     )
                 }
                 
@@ -185,7 +192,11 @@ class ReportActivity : AppCompatActivity() {
                             overtimeHours = if (attendance.manualOvertimeHours >= 0) attendance.manualOvertimeHours else 0.0,
                             extraHours = if (attendance.manualExtraHours >= 0) attendance.manualExtraHours else 0.0,
                             note = attendance.note,
-                            dayType = HolidayManager.getDayType(attendance.date).name,
+                            dayType = OvertimeCalculator.effectiveDayType(
+                                attendance.date,
+                                if (attendance.manualOvertimeHours >= 0) attendance.manualOvertimeHours else 0.0,
+                                if (attendance.manualExtraHours >= 0) attendance.manualExtraHours else 0.0
+                            ).name,
                             totalPay = OvertimeCalculator.calculateOvertime(attendance, settings).estimatedPay
                         )
                     }
@@ -333,16 +344,18 @@ class ReportActivity : AppCompatActivity() {
         var holidayHours = 0f
         
         monthRecords.forEach { record ->
-            val dayType = HolidayManager.getDayType(record.date)
             // 处理默认值：负数表示未设置，视为0
-            val overtimeHours = if (record.manualOvertimeHours >= 0) record.manualOvertimeHours.toFloat() else 0f
-            val extraHours = if (record.manualExtraHours >= 0) record.manualExtraHours.toFloat() else 0f
+            val overtimeHours = if (record.manualOvertimeHours >= 0) record.manualOvertimeHours else 0.0
+            val extraHours = if (record.manualExtraHours >= 0) record.manualExtraHours else 0.0
             val totalHours = overtimeHours + extraHours
-            
+
+            // 以登记内容分类（加点→工作日，加班→周末/节假日），与金额计算口径一致
+            val dayType = OvertimeCalculator.effectiveDayType(record.date, overtimeHours, extraHours)
+
             when (dayType) {
-                DayType.WORKDAY -> normalHours += totalHours
-                DayType.WEEKEND -> weekendHours += totalHours
-                DayType.HOLIDAY -> holidayHours += totalHours
+                DayType.WORKDAY -> normalHours += totalHours.toFloat()
+                DayType.WEEKEND -> weekendHours += totalHours.toFloat()
+                DayType.HOLIDAY -> holidayHours += totalHours.toFloat()
             }
         }
         
