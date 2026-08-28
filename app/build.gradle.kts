@@ -51,12 +51,14 @@ if (!ciVersionName.isNullOrBlank() && !ciVersionCode.isNullOrBlank()) {
 }
 
 // 签名配置：仅当 CI 注入环境变量（GitHub Secrets）时启用，本地构建保持不签名/自动签名，不受影响
-val keystoreBase64 = System.getenv("KEYSTORE_BASE64")
-val keystorePassword = System.getenv("KEYSTORE_PASSWORD")
-val keyAlias = System.getenv("KEY_ALIAS")
-val keyPassword = System.getenv("KEY_PASSWORD")
-val hasSigningEnv = !keystoreBase64.isNullOrBlank() && !keystorePassword.isNullOrBlank()
-        && !keyAlias.isNullOrBlank() && !keyPassword.isNullOrBlank()
+// 注意：变量名加 env 前缀，避免与 SigningConfig 的属性（keyAlias/keyPassword 等）同名，
+// 否则 create("release") 内赋值时右侧会被遮蔽成 self-assignment，导致签名配置缺属性
+val envKeystoreBase64 = System.getenv("KEYSTORE_BASE64")
+val envKeystorePassword = System.getenv("KEYSTORE_PASSWORD")
+val envKeyAlias = System.getenv("KEY_ALIAS")
+val envKeyPassword = System.getenv("KEY_PASSWORD")
+val hasSigningEnv = !envKeystoreBase64.isNullOrBlank() && !envKeystorePassword.isNullOrBlank()
+        && !envKeyAlias.isNullOrBlank() && !envKeyPassword.isNullOrBlank()
 
 android {
     namespace = "com.example.personalovertimerecord"
@@ -68,11 +70,11 @@ android {
                 // 把 Secrets 里的 base64 keystore 解码到构建目录（临时文件，不入库）
                 val keystoreFile = layout.buildDirectory.file("release.keystore").get().asFile
                 keystoreFile.parentFile.mkdirs()
-                keystoreFile.writeBytes(Base64.getDecoder().decode(keystoreBase64))
+                keystoreFile.writeBytes(Base64.getDecoder().decode(envKeystoreBase64))
                 storeFile = keystoreFile
-                storePassword = keystorePassword
-                keyAlias = keyAlias
-                keyPassword = keyPassword
+                storePassword = envKeystorePassword
+                keyAlias = envKeyAlias
+                keyPassword = envKeyPassword
             }
         }
     }
