@@ -11,7 +11,6 @@ import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
 import com.example.personalovertimerecord.R
-import com.example.personalovertimerecord.data.Attendance
 import com.example.personalovertimerecord.data.LeaveType
 import com.example.personalovertimerecord.data.OvertimeRecord
 import java.util.Calendar
@@ -23,10 +22,8 @@ class AddOvertimeDialog(
     private val month: Int,
     private val day: Int,
     private val existingRecord: OvertimeRecord? = null,
-    private val existingAttendance: Attendance? = null,
-    private val onSaveOvertimeRecord: ((OvertimeRecord) -> Unit)? = null,
-    private val onSaveAttendance: ((Attendance) -> Unit)? = null,
-    private val onDeleteAttendance: ((Long) -> Unit)? = null
+    private val onSaveRecord: ((OvertimeRecord) -> Unit)? = null,
+    private val onDeleteRecord: ((Long) -> Unit)? = null
 ) : Dialog(context) {
     
     private lateinit var actvOvertimeHours: AutoCompleteTextView
@@ -129,7 +126,7 @@ class AddOvertimeDialog(
     
     private fun setupExistingData() {
         if (existingRecord != null) {
-            tvTitle.text = "编辑加班记录"
+            tvTitle.text = "编辑记录"
             if (existingRecord.overtimeHours > 0) {
                 actvOvertimeHours.setText(existingRecord.overtimeHours.toString(), false)
             }
@@ -137,24 +134,15 @@ class AddOvertimeDialog(
                 actvExtraHours.setText(existingRecord.extraHours.toString(), false)
             }
             etNote.setText(existingRecord.note ?: "")
-        } else if (existingAttendance != null) {
-            tvTitle.text = "编辑考勤记录"
-            if (existingAttendance.manualOvertimeHours > 0) {
-                actvOvertimeHours.setText(existingAttendance.manualOvertimeHours.toString(), false)
-            }
-            if (existingAttendance.manualExtraHours > 0) {
-                actvExtraHours.setText(existingAttendance.manualExtraHours.toString(), false)
-            }
-            etNote.setText(existingAttendance.note ?: "")
             
             // 加载请假数据
-            if (existingAttendance.isLeave) {
+            if (existingRecord.isLeave) {
                 switchLeave.isChecked = true
                 leaveOptionsLayout.visibility = View.VISIBLE
-                if (existingAttendance.leaveHours > 0) {
-                    actvLeaveHours.setText(existingAttendance.leaveHours.toString(), false)
+                if (existingRecord.leaveHours > 0) {
+                    actvLeaveHours.setText(existingRecord.leaveHours.toString(), false)
                 }
-                existingAttendance.leaveType?.let { type ->
+                existingRecord.leaveType?.let { type ->
                     LeaveType.fromString(type)?.let { lt ->
                         selectedLeaveType = lt
                         actvLeaveType.setText(lt.displayName, false)
@@ -169,8 +157,8 @@ class AddOvertimeDialog(
     
     private fun setupListeners() {
         btnDelete.setOnClickListener {
-            if (existingAttendance != null && onDeleteAttendance != null) {
-                onDeleteAttendance.invoke(existingAttendance.id)
+            if (existingRecord != null && onDeleteRecord != null) {
+                onDeleteRecord.invoke(existingRecord.id)
                 dismiss()
             }
         }
@@ -217,28 +205,24 @@ class AddOvertimeDialog(
                 }
             }
             
-            if (existingRecord != null && onSaveOvertimeRecord != null) {
-                // OvertimeRecord doesn't support leave, show error
-                Toast.makeText(context, "加班记录不支持请假，请删除后重新添加", Toast.LENGTH_SHORT).show()
-                return
-            } else if (existingAttendance != null && onSaveAttendance != null) {
-                val updatedAttendance = existingAttendance.copy(
+            if (existingRecord != null && onSaveRecord != null) {
+                val updatedRecord = existingRecord.copy(
                     isLeave = true,
                     leaveType = selectedLeaveType.name,
                     leaveHours = leaveHours ?: 1.0,
                     note = if (note.isNullOrEmpty()) null else note
                 )
-                onSaveAttendance.invoke(updatedAttendance)
-            } else if (onSaveAttendance != null) {
-                val newAttendance = Attendance(
-                    id = 0,
+                onSaveRecord.invoke(updatedRecord)
+            } else if (onSaveRecord != null) {
+                val newRecord = OvertimeRecord(
+                    id = 0L,
                     date = dateStr,
                     isLeave = true,
                     leaveType = selectedLeaveType.name,
                     leaveHours = leaveHours ?: 1.0,
                     note = if (note.isNullOrEmpty()) null else note
                 )
-                onSaveAttendance.invoke(newAttendance)
+                onSaveRecord.invoke(newRecord)
             }
             dismiss()
             return
@@ -267,43 +251,28 @@ class AddOvertimeDialog(
         val finalOvertime = overtimeHours ?: 0.0
         val finalExtra = extraHours ?: 0.0
         
-        if (existingRecord != null && onSaveOvertimeRecord != null) {
+        if (existingRecord != null && onSaveRecord != null) {
             val updatedRecord = existingRecord.copy(
-                overtimeHours = finalOvertime,
-                extraHours = finalExtra,
-                note = if (note.isNullOrEmpty()) null else note
-            )
-            onSaveOvertimeRecord?.invoke(updatedRecord)
-        } else if (existingAttendance != null && onSaveAttendance != null) {
-            val updatedAttendance = existingAttendance.copy(
+                overtimeHours = if (finalOvertime > 0) finalOvertime else -1.0,
+                extraHours = if (finalExtra > 0) finalExtra else -1.0,
                 isLeave = false,
                 leaveType = null,
                 leaveHours = 0.0,
-                manualOvertimeHours = if (finalOvertime > 0) finalOvertime else -1.0,
-                manualExtraHours = if (finalExtra > 0) finalExtra else -1.0,
                 note = if (note.isNullOrEmpty()) null else note
             )
-            onSaveAttendance?.invoke(updatedAttendance)
-        } else if (onSaveOvertimeRecord != null) {
+            onSaveRecord?.invoke(updatedRecord)
+        } else if (onSaveRecord != null) {
             val newRecord = OvertimeRecord(
+                id = 0L, // 让Room数据库自动生成ID
                 date = dateStr,
-                overtimeHours = finalOvertime,
-                extraHours = finalExtra,
-                note = if (note.isNullOrEmpty()) null else note
-            )
-            onSaveOvertimeRecord?.invoke(newRecord)
-        } else if (onSaveAttendance != null) {
-            val newAttendance = Attendance(
-                id = 0, // 让Room数据库自动生成ID
-                date = dateStr,
+                overtimeHours = if (finalOvertime > 0) finalOvertime else -1.0,
+                extraHours = if (finalExtra > 0) finalExtra else -1.0,
                 isLeave = false,
                 leaveType = null,
                 leaveHours = 0.0,
-                manualOvertimeHours = if (finalOvertime > 0) finalOvertime else -1.0,
-                manualExtraHours = if (finalExtra > 0) finalExtra else -1.0,
                 note = if (note.isNullOrEmpty()) null else note
             )
-            onSaveAttendance?.invoke(newAttendance)
+            onSaveRecord?.invoke(newRecord)
         }
         
         dismiss()

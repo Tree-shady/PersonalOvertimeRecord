@@ -3,15 +3,13 @@ package com.example.personalovertimerecord.utils
 import android.content.Context
 import android.net.Uri
 import com.example.personalovertimerecord.data.OvertimeSettings
+import com.example.personalovertimerecord.data.SettingsManager
 import com.example.personalovertimerecord.data.db.AttendanceDao
 import com.example.personalovertimerecord.data.db.AttendanceEntity
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.io.BufferedReader
-import java.io.InputStreamReader
-import java.io.OutputStreamWriter
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -57,6 +55,11 @@ class DataExporter(
     private val gson = Gson()
     private val dateFormat = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault())
 
+    companion object {
+        /** 加密备份文件的内容前缀标记（后接 Base64( salt + iv + AES-CBC 密文 )） */
+        private const val ENC_PREFIX = "PORE_ENC1:"
+    }
+
     suspend fun exportData(
         uri: Uri,
         settings: OvertimeSettings,
@@ -69,15 +72,22 @@ class DataExporter(
 
                 val backupRecords = records.map { it.toBackup() }
 
+                // 备份设置剥离密码字段，避免明文备份文件泄露导出/同步加密密码
                 val backupData = BackupData(
-                    settings = settings,
+                    settings = settings.copy(exportPassword = "", syncPassword = ""),
                     attendanceRecords = backupRecords
                 )
 
+                val json = gson.toJson(backupData)
+                // 按"导出加密"开关对备份内容加密（带前缀标记，恢复时可自动识别）
+                val content = if (settings.exportEncryptionEnabled && settings.exportPassword.isNotBlank()) {
+                    ENC_PREFIX + EncryptionUtils.encryptString(json, settings.exportPassword)
+                } else {
+                    json
+                }
+
                 context.contentResolver.openOutputStream(uri)?.use { outputStream ->
-                    OutputStreamWriter(outputStream).use { writer ->
-                        gson.toJson(backupData, writer)
-                    }
+                    outputStream.write(content.toByteArray(Charsets.UTF_8))
                 }
 
                 withContext(Dispatchers.Main) {
@@ -99,18 +109,33 @@ class DataExporter(
         withContext(Dispatchers.IO) {
             try {
                 context.contentResolver.openInputStream(uri)?.use { inputStream ->
-                    BufferedReader(InputStreamReader(inputStream)).use { reader ->
-                        val type = object : TypeToken<BackupData>() {}.type
-                        val backupData: BackupData? = gson.fromJson(reader, type)
-                        if (backupData == null) {
-                            throw Exception("备份文件格式无效")
+                    val raw = inputStream.readBytes().toString(Charsets.UTF_8)
+                    val json = if (raw.startsWith(ENC_PREFIX)) {
+                        // 加密备份：使用设置的导出加密密码解密
+                        val settings = SettingsManager(context).getSettings()
+                        val password = settings.exportPassword
+                        if (password.isBlank()) {
+                            throw Exception("备份文件已加密，请在设置中配置导出加密密码后重试")
                         }
-                        // Gson 反序列化可能产生 null 字段，补齐安全默认值防止 NPE
-                        val safeBackup = backupData.sanitized()
+                        try {
+                            EncryptionUtils.decryptString(raw.removePrefix(ENC_PREFIX), password)
+                        } catch (e: Exception) {
+                            throw Exception("备份解密失败：密码错误或文件已损坏")
+                        }
+                    } else {
+                        raw
+                    }
 
-                        withContext(Dispatchers.Main) {
-                            onSuccess(safeBackup)
-                        }
+                    val type = object : TypeToken<BackupData>() {}.type
+                    val backupData: BackupData? = gson.fromJson(json, type)
+                    if (backupData == null) {
+                        throw Exception("备份文件格式无效")
+                    }
+                    // Gson 反序列化可能产生 null 字段，补齐安全默认值防止 NPE
+                    val safeBackup = backupData.sanitized()
+
+                    withContext(Dispatchers.Main) {
+                        onSuccess(safeBackup)
                     }
                 } ?: throw Exception("无法打开文件")
             } catch (e: Exception) {

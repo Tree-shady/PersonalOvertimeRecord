@@ -6,13 +6,17 @@ import com.example.personalovertimerecord.utils.SecurePreferencesManager
 import org.json.JSONArray
 import org.json.JSONObject
 
+/**
+ * 旧的 JSON 存储实现（历史遗留，当前未被使用；保留仅为兼容编译）。
+ * 数据访问请使用 Room（AttendanceRepository）。
+ */
 class AttendanceStorage(context: Context) {
     
     private val prefs: SharedPreferences = SecurePreferencesManager.getEncryptedPrefs(context)
     private var nextId: Long = 1L
     
     // 内存缓存，提升性能
-    private var cachedData: List<Attendance>? = null
+    private var cachedData: List<OvertimeRecord>? = null
     private var isCacheDirty: Boolean = true
     
     init {
@@ -22,17 +26,17 @@ class AttendanceStorage(context: Context) {
         }
     }
     
-    fun getAllAttendance(): List<Attendance> {
+    fun getAllAttendance(): List<OvertimeRecord> {
         if (!isCacheDirty && cachedData != null) {
             return cachedData!!
         }
         
         val jsonString = prefs.getString(KEY_ATTENDANCE, "[]")
         val jsonArray = JSONArray(jsonString)
-        val list = mutableListOf<Attendance>()
+        val list = mutableListOf<OvertimeRecord>()
         
         for (i in 0 until jsonArray.length()) {
-            list.add(jsonToAttendance(jsonArray.getJSONObject(i)))
+            list.add(jsonToRecord(jsonArray.getJSONObject(i)))
         }
         
         cachedData = list.sortedByDescending { it.date }
@@ -40,15 +44,15 @@ class AttendanceStorage(context: Context) {
         return cachedData!!
     }
     
-    fun getAttendanceByDate(date: String): Attendance? {
+    fun getAttendanceByDate(date: String): OvertimeRecord? {
         return getAllAttendance().find { it.date == date }
     }
     
-    fun getAttendanceById(id: Long): Attendance? {
+    fun getAttendanceById(id: Long): OvertimeRecord? {
         return getAllAttendance().find { it.id == id }
     }
     
-    fun saveAttendance(attendance: Attendance) {
+    fun saveAttendance(attendance: OvertimeRecord) {
         val list = getAllAttendance().toMutableList()
         val existingIndex = list.indexOfFirst { it.id == attendance.id }
         if (existingIndex >= 0) {
@@ -59,7 +63,7 @@ class AttendanceStorage(context: Context) {
         saveAllAttendance(list)
     }
     
-    fun insertAttendance(attendance: Attendance): Long {
+    fun insertAttendance(attendance: OvertimeRecord): Long {
         val newAttendance = if (attendance.id == 0L) {
             attendance.copy(id = nextId++)
         } else {
@@ -69,7 +73,7 @@ class AttendanceStorage(context: Context) {
         return newAttendance.id
     }
     
-    fun updateAttendance(attendance: Attendance) {
+    fun updateAttendance(attendance: OvertimeRecord) {
         saveAttendance(attendance)
     }
     
@@ -79,7 +83,7 @@ class AttendanceStorage(context: Context) {
         saveAllAttendance(list)
     }
     
-    private fun saveAllAttendance(list: List<Attendance>) {
+    private fun saveAllAttendance(list: List<OvertimeRecord>) {
         val jsonArray = JSONArray()
         list.forEach { jsonArray.put(attendanceToJson(it)) }
         prefs.edit().putString(KEY_ATTENDANCE, jsonArray.toString()).apply()
@@ -93,7 +97,7 @@ class AttendanceStorage(context: Context) {
         cachedData = null
     }
     
-    private fun attendanceToJson(attendance: Attendance): JSONObject {
+    private fun attendanceToJson(attendance: OvertimeRecord): JSONObject {
         return JSONObject().apply {
             put("id", attendance.id)
             put("date", attendance.date)
@@ -102,13 +106,13 @@ class AttendanceStorage(context: Context) {
             put("checkInTimestamp", attendance.checkInTimestamp)
             put("checkOutTimestamp", attendance.checkOutTimestamp)
             put("note", attendance.note)
-            put("manualOvertimeHours", attendance.manualOvertimeHours)
-            put("manualExtraHours", attendance.manualExtraHours)
+            put("manualOvertimeHours", attendance.overtimeHours)
+            put("manualExtraHours", attendance.extraHours)
         }
     }
     
-    private fun jsonToAttendance(json: JSONObject): Attendance {
-        return Attendance(
+    private fun jsonToRecord(json: JSONObject): OvertimeRecord {
+        return OvertimeRecord(
             id = json.getLong("id"),
             date = json.getString("date"),
             checkInTime = json.optString("checkInTime", null),
@@ -116,8 +120,8 @@ class AttendanceStorage(context: Context) {
             checkInTimestamp = json.optLong("checkInTimestamp", 0L).takeIf { it != 0L },
             checkOutTimestamp = json.optLong("checkOutTimestamp", 0L).takeIf { it != 0L },
             note = json.optString("note", null),
-            manualOvertimeHours = json.optDouble("manualOvertimeHours", -1.0),
-            manualExtraHours = json.optDouble("manualExtraHours", -1.0)
+            overtimeHours = json.optDouble("manualOvertimeHours", -1.0),
+            extraHours = json.optDouble("manualExtraHours", -1.0)
         )
     }
     

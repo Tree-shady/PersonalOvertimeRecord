@@ -6,14 +6,14 @@ import android.os.Bundle
 import android.view.WindowManager
 import android.widget.Toast
 import com.example.personalovertimerecord.R
-import com.example.personalovertimerecord.data.Attendance
+import com.example.personalovertimerecord.data.OvertimeRecord
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.textfield.TextInputEditText
 
 class EditAttendanceDialog(
     private val context: Context,
-    private val attendance: Attendance,
-    private val onSave: (Attendance) -> Unit,
+    private val attendance: OvertimeRecord,
+    private val onSave: (OvertimeRecord) -> Unit,
     private val onDelete: (Long) -> Unit
 ) {
     
@@ -52,11 +52,11 @@ class EditAttendanceDialog(
             etCheckInTime.setText(attendance.checkInTime?.substring(0, 5) ?: "")
             etCheckOutTime.setText(attendance.checkOutTime?.substring(0, 5) ?: "")
             
-            if (attendance.manualOvertimeHours >= 0) {
-                etManualOvertime.setText(attendance.manualOvertimeHours.toString())
+            if (attendance.overtimeHours >= 0) {
+                etManualOvertime.setText(attendance.overtimeHours.toString())
             }
-            if (attendance.manualExtraHours >= 0) {
-                etManualExtra.setText(attendance.manualExtraHours.toString())
+            if (attendance.extraHours >= 0) {
+                etManualExtra.setText(attendance.extraHours.toString())
             }
             
             etNote.setText(attendance.note ?: "")
@@ -105,8 +105,8 @@ class EditAttendanceDialog(
         val updatedAttendance = attendance.copy(
             checkInTime = checkInTime,
             checkOutTime = checkOutTime,
-            manualOvertimeHours = manualOvertimeHours,
-            manualExtraHours = manualExtraHours,
+            overtimeHours = manualOvertimeHours,
+            extraHours = manualExtraHours,
             note = if (note.isNullOrEmpty()) null else note
         )
         

@@ -2,7 +2,7 @@
 
 一个功能丰富、稳定可靠的Android应用，用于记录个人的加班信息和计算加班工资。
 
-![Version](https://img.shields.io/badge/version-1.3.0-blue)
+![Version](https://img.shields.io/badge/version-0.1.5-blue)
 ![Min SDK](https://img.shields.io/badge/minSdk-24-green)
 ![Target SDK](https://img.shields.io/badge/targetSdk-36-orange)
 
@@ -17,6 +17,7 @@
 - 📈 **月度分析报表** - 支持 ◀/▶ 切换月份，按月查看加班天数、总时长、加班工资与工资构成
 - 📊 **堆叠柱状图** - 月度时长柱状图用不同颜色区分"加班"与"加点"
 - 🎯 **智能区分** - 工作日、周末、节假日加班倍率自动识别（含调休补班日）
+- 🏖️ **请假/早退登记** - 支持 10 种请假类型（年假、病假、事假、婚假、产假等）按天登记，与加班记录同表管理
 
 ### 数据管理
 - 📤 **数据导出** - 支持导出为 PDF 精美报告、CSV/JSON 格式
@@ -31,6 +32,7 @@
 - 🔔 **打卡提醒** - 可设置上下班打卡提醒
 - 🎮 **科幻启动页** - 炫酷的终端风格开机自检动画
 - ✨ **流畅动画** - 精心设计的过渡动画效果
+- 🔐 **生物识别保护** - 通过中转启动页拦截外部启动，主界面不可被外部应用直接拉起
 
 ### 安全与稳定
 - 🔒 **数据加密** - SQLCipher 数据库加密，主密钥由 Android Keystore 保护（不再明文存储）
@@ -77,9 +79,8 @@ app/
 │   ├── adapter/                  # RecyclerView 适配器
 │   ├── data/                     # 数据层
 │   │   ├── db/                   # Room 数据库（DAO、Entity）
-│   │   ├── Attendance.kt         # 考勤记录模型
-│   │   ├── OvertimeModels.kt     # 加班记录/设置/结果模型
-│   │   ├── AttendanceStorage.kt  # 旧版存储（已迁移至 Room）
+│   │   ├── OvertimeModels.kt     # 记录/设置/结果模型 + 请假类型（LeaveType）
+│   │   ├── AttendanceStorage.kt  # 旧版 JSON 存储（已迁移至 Room）
 │   │   ├── OvertimeStorage.kt    # 旧版存储（已迁移至 Room）
 │   │   └── SettingsManager.kt    # 设置管理
 │   ├── dialog/                   # 对话框组件
@@ -107,15 +108,20 @@ app/
 │   │   ├── PdfExporter.kt        # PDF 导出
 │   │   ├── PermissionManager.kt  # 权限管理
 │   │   ├── ReminderManager.kt    # 打卡提醒
+│   │   ├── ReminderReceiver.kt   # 打卡提醒广播接收器
+│   │   ├── BiometricManager.kt   # 生物识别管理
 │   │   ├── SalaryCalculator.kt   # 工资计算
 │   │   ├── SecurePreferencesManager.kt # 加密存储
 │   │   ├── SettingsManager.kt    # 设置管理
 │   │   ├── SyncDirection.kt      # 同步方向与预置策略
 │   │   ├── SyncManager.kt        # 同步管理
 │   │   ├── ThemeManager.kt       # 主题管理
-│   │   └── WebDAVManager.kt      # WebDAV 客户端
+│   │   ├── WebDAVManager.kt      # WebDAV 客户端
+│   │   ├── UpdateManager.kt      # 软件自动更新
+│   │   └── Constants.kt          # 常量定义
 │   ├── view/                     # 自定义视图
 │   ├── viewmodel/                # ViewModel 层
+│   ├── LauncherActivity.kt       # 中转启动页（生物识别保护入口）
 │   ├── MainActivity.kt           # 主界面
 │   ├── SettingsActivity.kt       # 设置界面
 │   ├── DataManagerActivity.kt    # 数据管理界面
@@ -195,6 +201,18 @@ distributionUrl=https://repo.huaweicloud.com/gradle/gradle-8.9-bin.zip
 
 > 节假日数据内置 2024-2028 年(2024-2026 依据官方安排,2027-2028 为农历预测),并包含 2024/2025 调休补班日(按工作日 1.5 倍计算)。
 
+### 请假/早退登记
+
+在日常考勤中，遇到请假或提前下班（早退）时，可将当天登记为请假记录：
+
+- **登记方式**：添加/编辑记录时打开「请假」开关，选择请假类型与天数
+- **请假类型**：年假、病假、事假、婚假、产假、陪产假、丧假、工伤假、无薪假、其他，共 10 种
+- **按天登记**：以天为单位（1 天 = 8 小时），天数上限为当月剩余天数
+- **数据字段**：`isLeave`（是否请假）、`leaveType`（请假类型）、`leaveHours`（请假天数）
+- **与加班互斥**：同一日期要么登记请假、要么登记加班/加点，保存时相互清除
+
+> 说明：请假/早退目前以「登记与展示」为主，不参与加班费计算；如需在工资中扣减请假天数，可在后续版本接入。
+
 ### 报表月度分析
 
 报表页面默认展示当前月份，支持按月维度进行分析：
@@ -216,6 +234,15 @@ distributionUrl=https://repo.huaweicloud.com/gradle/gradle-8.9-bin.zip
 - **自动同步** - AlarmManager 定时调度（15 分钟 ~ 24 小时可选），设备重启后自动恢复，可仅限 WiFi
 - **并发保护** - 全局互斥锁，手动与自动同步不会互相覆盖
 - **覆盖保护** - 下载/解密失败时中止上传，避免本地数据覆盖式冲掉云端备份
+
+### 软件自动更新机制
+
+- **分发渠道** - 基于 GitHub Releases 分发，`release.yml` 打 tag 时自动生成 `latest.json` 更新清单并随 APK 一起发布
+- **检查方式** - 启动时静默检查（24 小时节流），设置页可手动"检查更新"
+- **更新流程** - 拉取清单 → 比较 versionCode → 下载 APK（带进度）→ SHA-256 校验 → 签名一致性校验 → 调起系统安装器
+- **强制更新** - 清单 `minVersionCode` 高于当前版本时弹窗不可取消、无"稍后"按钮
+- **安全** - 清单与 APK 均走 https；SHA-256 防篡改；下载包签名与已安装应用不一致时拒绝安装
+- **兼容** - Android 8.0+ 通过 `REQUEST_INSTALL_PACKAGES` + FileProvider 调起安装器，未授权时引导用户开启"允许安装未知来源应用"
 
 ### 设置选项
 
@@ -264,6 +291,15 @@ distributionUrl=https://repo.huaweicloud.com/gradle/gradle-8.9-bin.zip
 7. **云端同步**: 配置 WebDAV 后可自动同步数据
 
 ## 更新日志
+
+### v0.1.6 (2026-08-30)
+- 🏖️ 新增请假/早退登记：支持 10 种请假类型（年假、病假、事假、婚假、产假、陪产假、丧假、工伤假、无薪假、其他），按天登记，与加班记录同表管理
+- 🔐 新增中转启动页（LauncherActivity）：主界面设为不可导出，防止外部应用绕过生物识别直接拉起
+- 🔧 数据模型统一：以 OvertimeRecord 取代已废弃的 Attendance，作为 Room 与 UI 间的唯一模型
+- 🐛 修复数据导出/云端同步丢失请假字段（leaveType/leaveHours）的问题
+- 🐛 修复数据恢复无事务保护：改为批量插入 + 事务回滚，避免中途失败导致数据半删除
+- ⚡ 日历视图性能优化：预计算日期显示信息并缓存，避免在 onDraw 中重复读取设置与计算薪资
+- ⚡ 月度统计与报表优化：先按月份/年份过滤再计算，消除重复遍历与重复过滤
 
 ### v0.1.5 (2026-08-28)
 - ✨ 新增**登记即分类**规则：登记"加点"按正常工作日（1.5x）、登记"加班"按周末/节假日（2x/3x）计算；下班打卡自动按此登记（工作日超时记为加点、非工作日记为加班）

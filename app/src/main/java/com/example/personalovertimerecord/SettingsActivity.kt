@@ -13,6 +13,7 @@ import androidx.lifecycle.lifecycleScope
 import com.example.personalovertimerecord.data.OvertimeSettings
 import com.example.personalovertimerecord.data.SettingsManager
 import com.example.personalovertimerecord.databinding.ActivitySettingsBinding
+import com.example.personalovertimerecord.dialog.UpdateDialog
 import com.example.personalovertimerecord.utils.AppLogger
 import com.example.personalovertimerecord.utils.AutoSyncManager
 import com.example.personalovertimerecord.utils.NetworkUtils
@@ -20,6 +21,7 @@ import com.example.personalovertimerecord.utils.BiometricManager
 import com.example.personalovertimerecord.utils.ReminderManager
 import com.example.personalovertimerecord.utils.ThemeManager
 import com.example.personalovertimerecord.utils.ThemeMode
+import com.example.personalovertimerecord.utils.UpdateManager
 import com.example.personalovertimerecord.utils.WebDAVConfig
 import com.example.personalovertimerecord.utils.WebDAVManager
 import kotlinx.coroutines.Dispatchers
@@ -59,7 +61,58 @@ class SettingsActivity : AppCompatActivity() {
         setupEncryption()
         setupButtons()
         setupShiftGroup()
+        setupUpdate()
         setupScrollToFocusedView()
+    }
+    
+    private fun setupUpdate() {
+        binding.tvCurrentVersion.text = "当前版本：v${UpdateManager.getCurrentVersionName(this)}"
+        
+        binding.btnCheckUpdate.setOnClickListener {
+            checkForUpdate()
+        }
+    }
+    
+    private fun checkForUpdate() {
+        if (!NetworkUtils.isNetworkAvailable(this)) {
+            Toast.makeText(this, "请先检查网络连接", Toast.LENGTH_SHORT).show()
+            return
+        }
+        
+        binding.btnCheckUpdate.isEnabled = false
+        binding.btnCheckUpdate.text = "检查中..."
+        
+        lifecycleScope.launch {
+            val info = withContext(Dispatchers.IO) {
+                UpdateManager.fetchUpdateInfo(this@SettingsActivity)
+            }
+            
+            binding.btnCheckUpdate.isEnabled = true
+            binding.btnCheckUpdate.text = "检查更新"
+            
+            if (info == null) {
+                UpdateDialog.showError(
+                    this@SettingsActivity,
+                    "无法获取更新信息，请检查网络后重试。\n\n若为刚发布的版本，GitHub 可能需要几分钟生成更新清单。"
+                )
+                return@launch
+            }
+            
+            UpdateManager.markChecked(this@SettingsActivity)
+            
+            if (UpdateManager.isUpdateAvailable(this@SettingsActivity, info)) {
+                val force = UpdateManager.isForceUpdate(this@SettingsActivity, info)
+                UpdateDialog.showUpdateAvailable(
+                    this@SettingsActivity,
+                    info,
+                    force
+                ) {
+                    UpdateDialog.startUpdateFlow(lifecycleScope, this@SettingsActivity, info)
+                }
+            } else {
+                UpdateDialog.showNoUpdate(this@SettingsActivity)
+            }
+        }
     }
     
     private fun setupBiometric() {

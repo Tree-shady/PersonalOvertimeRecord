@@ -36,6 +36,8 @@ class BiometricActivity : AppCompatActivity() {
     
     private fun proceedToMain() {
         val intent = Intent(this, MainActivity::class.java)
+        // 携带"已验证通过"标志，避免 MainActivity 再次触发验证造成循环
+        intent.putExtra(MainActivity.EXTRA_BIOMETRIC_PASSED, true)
         intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_NEW_TASK
         startActivity(intent)
         finish()

@@ -18,26 +18,33 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.personalovertimerecord.adapter.AttendanceAdapter
-import com.example.personalovertimerecord.data.Attendance
 import com.example.personalovertimerecord.data.DayType
+import com.example.personalovertimerecord.data.OvertimeRecord
 import com.example.personalovertimerecord.data.OvertimeSettings
 import com.example.personalovertimerecord.data.SettingsManager
 import com.example.personalovertimerecord.data.db.AppDatabase
 import com.example.personalovertimerecord.databinding.ActivityMainBinding
 import com.example.personalovertimerecord.dialog.AddOvertimeDialog
+import com.example.personalovertimerecord.dialog.UpdateDialog
+import com.example.personalovertimerecord.utils.BiometricManager
+import com.example.personalovertimerecord.utils.Constants
 import com.example.personalovertimerecord.utils.DateUtils
 import com.example.personalovertimerecord.utils.Formatter
 import com.example.personalovertimerecord.utils.HolidayManager
+import com.example.personalovertimerecord.utils.NetworkUtils
 import com.example.personalovertimerecord.utils.OvertimeCalculator
 import com.example.personalovertimerecord.utils.SyncDirection
 import com.example.personalovertimerecord.utils.SyncManager
 import com.example.personalovertimerecord.utils.SyncOptions
 import com.example.personalovertimerecord.utils.SyncPresets
 import com.example.personalovertimerecord.utils.SyncResult
+import com.example.personalovertimerecord.utils.UpdateManager
 import com.example.personalovertimerecord.view.CalendarView
 import com.example.personalovertimerecord.viewmodel.AttendanceViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.Calendar
 import java.util.Date
 
@@ -45,6 +52,12 @@ class MainActivity : AppCompatActivity() {
     
     companion object {
         private const val TIME_UPDATE_INTERVAL = 5000L
+        
+        /**
+         * 生物识别验证通过的标志，由 BiometricActivity 验证成功后
+         * 携带此标志重新进入 MainActivity，避免无限循环触发验证。
+         */
+        const val EXTRA_BIOMETRIC_PASSED = "biometric_passed"
     }
     
     private val viewModel: AttendanceViewModel by viewModels()
@@ -72,6 +85,17 @@ class MainActivity : AppCompatActivity() {
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        // 生物识别保护：启用后进入主界面必须先通过身份验证。
+        // 验证成功后 BiometricActivity 会携带 EXTRA_BIOMETRIC_PASSED 标志重新进入本页。
+        if (BiometricManager.needsAuthentication(this) &&
+            !intent.getBooleanExtra(EXTRA_BIOMETRIC_PASSED, false)
+        ) {
+            startActivity(Intent(this, BiometricActivity::class.java))
+            finish()
+            return
+        }
+        
         window.decorView.animation = AnimationUtils.loadAnimation(this, android.R.anim.fade_in)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
@@ -93,6 +117,33 @@ class MainActivity : AppCompatActivity() {
         
         // 启动后台检查
         runStartupChecks()
+        
+        // 静默检查更新（24 小时节流，不打扰用户；发现新版本才弹窗）
+        checkUpdateSilently()
+    }
+    
+    /**
+     * 静默检查更新：距上次成功检查超过 24 小时才请求服务器。
+     * 检查失败静默忽略（不打扰启动流程），设置页可手动重试。
+     */
+    private fun checkUpdateSilently() {
+        if (!UpdateManager.shouldCheck(this, Constants.UPDATE_CHECK_INTERVAL_MS)) return
+        if (!NetworkUtils.isNetworkAvailable(this)) return
+        
+        lifecycleScope.launch {
+            val info = withContext(Dispatchers.IO) {
+                UpdateManager.fetchUpdateInfo(this@MainActivity)
+            } ?: return@launch
+            
+            UpdateManager.markChecked(this@MainActivity)
+            
+            if (!UpdateManager.isUpdateAvailable(this@MainActivity, info)) return@launch
+            
+            val force = UpdateManager.isForceUpdate(this@MainActivity, info)
+            UpdateDialog.showUpdateAvailable(this@MainActivity, info, force) {
+                UpdateDialog.startUpdateFlow(lifecycleScope, this@MainActivity, info)
+            }
+        }
     }
     
     private fun requestNotificationPermissionIfNeeded() {
@@ -126,6 +177,10 @@ class MainActivity : AppCompatActivity() {
                 tvStatus.text = "检查数据库..."
                 val database = AppDatabase.getDatabase(this@MainActivity)
                 database.attendanceDao().getAllRecordsSync() // 使用正确的方法名
+                // 加密库降级为明文库时向用户明示，避免数据保护被静默关闭
+                AppDatabase.encryptionFallbackReason?.let { reason ->
+                    errors.add("数据库加密不可用（$reason），数据保护已降级")
+                }
                 delay(200)
                 
                 // 检查2: 设置加载
@@ -170,7 +225,11 @@ class MainActivity : AppCompatActivity() {
         startTimeUpdates()
         currentSettings = settingsManager.getSettings()
         adapter.updateSettings(currentSettings)
-        viewModel.allAttendance.value?.let { updateMonthlyStats(it) }
+        viewModel.allAttendance.value?.let { attendanceList ->
+            val monthRecords = getCurrentMonthRecords(attendanceList)
+            updateMonthlyStats(monthRecords)
+            refreshMonthRecords(monthRecords)
+        }
         updateCheckInStatus()
     }
     
@@ -229,29 +288,33 @@ class MainActivity : AppCompatActivity() {
         }
         updateMonthYearText()
         updateCalendarData()
-        // 切换月份后更新统计数据
-        viewModel.allAttendance.value?.let { updateMonthlyStats(it) }
+        // 切换月份后更新统计数据与当月记录列表（单次过滤复用）
+        viewModel.allAttendance.value?.let { attendanceList ->
+            val monthRecords = getCurrentMonthRecords(attendanceList)
+            updateMonthlyStats(monthRecords)
+            refreshMonthRecords(monthRecords)
+        }
     }
     
     private fun showAttendanceDialog(year: Int, month: Int, day: Int) {
         val dateStr = DateUtils.formatDate(year, month, day)
-        val existingAttendance = viewModel.allAttendance.value?.find { it.date == dateStr }
+        val existingRecord = viewModel.allAttendance.value?.find { it.date == dateStr }
         
         val dialog = AddOvertimeDialog(
             context = this,
             year = year,
             month = month,
             day = day,
-            existingAttendance = existingAttendance,
-            onSaveAttendance = { attendance ->
-                if (existingAttendance != null) {
-                    viewModel.updateAttendance(attendance)
+            existingRecord = existingRecord,
+            onSaveRecord = { record ->
+                if (existingRecord != null) {
+                    viewModel.updateAttendance(record)
                 } else {
-                    viewModel.addAttendance(attendance)
+                    viewModel.addAttendance(record)
                 }
                 updateCalendarData()
             },
-            onDeleteAttendance = { id ->
+            onDeleteRecord = { id ->
                 viewModel.allAttendance.value?.find { it.id == id }?.let {
                     viewModel.deleteAttendance(it)
                 }
@@ -261,7 +324,7 @@ class MainActivity : AppCompatActivity() {
         dialog.show()
     }
     
-    private fun showAttendanceDialog(attendance: Attendance) {
+    private fun showAttendanceDialog(attendance: OvertimeRecord) {
         val dateParts = DateUtils.extractDateParts(attendance.date)
         if (dateParts != null) {
             val (year, month, day) = dateParts
@@ -271,6 +334,7 @@ class MainActivity : AppCompatActivity() {
     
     private fun updateMonthYearText() {
         binding.tvMonthYear.text = "${currentYear}年${currentMonth + 1}月"
+        binding.tvRecordSectionTitle.text = "${currentYear}年${currentMonth + 1}月加班记录"
         calendarView.setMonth(currentYear, currentMonth)
     }
     
@@ -338,14 +402,19 @@ class MainActivity : AppCompatActivity() {
         val newAttendance = existingAttendance?.copy(
             checkInTime = currentTime,
             checkInTimestamp = System.currentTimeMillis()
-        ) ?: Attendance(
-            id = 0,
+        ) ?: OvertimeRecord(
+            id = 0L,
             date = dateStr,
             checkInTime = currentTime,
             checkInTimestamp = System.currentTimeMillis()
         )
         
-        viewModel.addAttendance(newAttendance)
+        if (existingAttendance != null) {
+            // 已有当日记录：更新同一行（保留原 id），避免重复插入同一日期造成重复数据
+            viewModel.updateAttendance(newAttendance)
+        } else {
+            viewModel.addAttendance(newAttendance)
+        }
         Toast.makeText(this, "上班打卡成功！时间：$currentTime", Toast.LENGTH_SHORT).show()
         updateCheckInStatus()
     }
@@ -378,13 +447,13 @@ class MainActivity : AppCompatActivity() {
         val autoOvertime = if (isWorkday) 0.0 else workHours
         val autoExtra = if (isWorkday) Math.max(0.0, workHours - settings.dailyWorkHours) else 0.0
         
-        val finalOvertime = if (existingAttendance.manualOvertimeHours >= 0) {
-            existingAttendance.manualOvertimeHours
+        val finalOvertime = if (existingAttendance.overtimeHours >= 0) {
+            existingAttendance.overtimeHours
         } else {
             autoOvertime
         }
-        val finalExtra = if (existingAttendance.manualExtraHours >= 0) {
-            existingAttendance.manualExtraHours
+        val finalExtra = if (existingAttendance.extraHours >= 0) {
+            existingAttendance.extraHours
         } else {
             autoExtra
         }
@@ -392,8 +461,8 @@ class MainActivity : AppCompatActivity() {
         val newAttendance = existingAttendance.copy(
             checkOutTime = currentTime,
             checkOutTimestamp = System.currentTimeMillis(),
-            manualOvertimeHours = finalOvertime,
-            manualExtraHours = finalExtra
+            overtimeHours = finalOvertime,
+            extraHours = finalExtra
         )
         
         viewModel.updateAttendance(newAttendance)
@@ -508,10 +577,12 @@ class MainActivity : AppCompatActivity() {
     
     private fun observeViewModel() {
         viewModel.allAttendance.observe(this) { attendanceList ->
-            adapter.submitList(attendanceList)
+            // 只过滤一次，供记录列表/空状态/本月统计复用，避免对每条记录重复解析日期
+            val monthRecords = getCurrentMonthRecords(attendanceList)
+            adapter.submitList(monthRecords)
             updateCalendarData()
-            updateMonthlyStats(attendanceList)
-            updateEmptyState(attendanceList)
+            updateMonthlyStats(monthRecords)
+            updateEmptyState(monthRecords)
             updateCheckInStatus()
         }
         
@@ -523,8 +594,8 @@ class MainActivity : AppCompatActivity() {
         }
     }
     
-    private fun updateEmptyState(attendanceList: List<Attendance>) {
-        if (attendanceList.isEmpty()) {
+    private fun updateEmptyState(monthRecords: List<OvertimeRecord>) {
+        if (monthRecords.isEmpty()) {
             binding.recyclerView.visibility = View.GONE
             binding.emptyStateLayout.visibility = View.VISIBLE
         } else {
@@ -533,19 +604,11 @@ class MainActivity : AppCompatActivity() {
         }
     }
     
-    private fun updateMonthlyStats(attendanceList: List<Attendance>) {
+    private fun updateMonthlyStats(monthRecords: List<OvertimeRecord>) {
         var totalHours = 0.0
         var totalOvertimePay = 0.0
         
-        // 过滤出当前月份的记录
-        val currentMonthRecords = attendanceList.filter { attendance ->
-            val dateParts = DateUtils.extractDateParts(attendance.date)
-            dateParts?.let { (year, month, _) ->
-                year == currentYear && month == currentMonth
-            } ?: false
-        }
-        
-        currentMonthRecords.forEach { attendance ->
+        monthRecords.forEach { attendance ->
             val result = OvertimeCalculator.calculateOvertime(attendance, currentSettings)
             totalHours += result.overtimeHours + result.extraHours
             totalOvertimePay += result.estimatedPay
@@ -556,5 +619,24 @@ class MainActivity : AppCompatActivity() {
         
         binding.tvTotalOvertime.text = Formatter.formatHours(totalHours)
         binding.tvTotalPay.text = Formatter.formatMoney(totalPay)
+    }
+    
+    /**
+     * 过滤出当前所选月份（currentYear/currentMonth）的加班记录，
+     * 供"加班记录"卡片列表显示，与"本月统计"卡片口径一致。
+     * 日期格式固定为 yyyy-MM-dd，用字符串前缀匹配即可，避免逐条解析日期。
+     */
+    private fun getCurrentMonthRecords(attendanceList: List<OvertimeRecord>): List<OvertimeRecord> {
+        val monthPrefix = String.format("%04d-%02d", currentYear, currentMonth + 1)
+        return attendanceList.filter { it.date.startsWith(monthPrefix) }
+    }
+    
+    /**
+     * 切换月份后，刷新"加班记录"列表与空状态显示。
+     * @param monthRecords 已按当前所选月份过滤好的记录
+     */
+    private fun refreshMonthRecords(monthRecords: List<OvertimeRecord>) {
+        adapter.submitList(monthRecords)
+        updateEmptyState(monthRecords)
     }
 }

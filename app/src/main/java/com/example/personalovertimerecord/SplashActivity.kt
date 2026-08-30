@@ -347,6 +347,8 @@ class SplashActivity : AppCompatActivity() {
     }
 
     private fun tryNavigateToMain() {
+        // 防止 Activity 已销毁/正在销毁时仍执行导航回调
+        if (isFinishing || isDestroyed) return
         if (isAnimationFinished && isPermissionChecked) {
             glitchAnimator?.cancel()
             val intent = if (BiometricManager.needsAuthentication(this)) {
@@ -363,5 +365,7 @@ class SplashActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         glitchAnimator?.cancel()
+        // 清理所有延迟回调，避免 Activity 销毁后仍执行导航
+        handler.removeCallbacksAndMessages(null)
     }
 }

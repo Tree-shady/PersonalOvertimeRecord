@@ -6,8 +6,22 @@
     <exclude domain="sharedpref" path="overtime_prefs"/>
     <exclude domain="sharedpref" path="attendance_prefs"/>
     <exclude domain="sharedpref" path="app_prefs"/>
+    <!-- 数据库密钥密文（Keystore 密钥不随备份迁移，恢复后必然解密失败） -->
+    <exclude domain="sharedpref" path="db_key_prefs"/>
+    <!-- 生物识别开关、自动同步与提醒配置，避免恢复后状态不一致 -->
+    <exclude domain="sharedpref" path="biometric_prefs"/>
+    <exclude domain="sharedpref" path="auto_sync_prefs"/>
+    <exclude domain="sharedpref" path="reminder_prefs"/>
+    <exclude domain="sharedpref" path="permission_prefs"/>
+    <exclude domain="sharedpref" path="data_manager"/>
+    <!-- 加密数据库及其 WAL/SHM/JOURNAL -->
     <exclude domain="database" path="overtime_database"/>
     <exclude domain="database" path="overtime_database-journal"/>
     <exclude domain="database" path="overtime_database-wal"/>
     <exclude domain="database" path="overtime_database-shm"/>
+    <!-- 明文降级库（若存在）同样排除，避免明文数据被云备份 -->
+    <exclude domain="database" path="overtime_database_unencrypted"/>
+    <exclude domain="database" path="overtime_database_unencrypted-journal"/>
+    <exclude domain="database" path="overtime_database_unencrypted-wal"/>
+    <exclude domain="database" path="overtime_database_unencrypted-shm"/>
 </full-backup-content>

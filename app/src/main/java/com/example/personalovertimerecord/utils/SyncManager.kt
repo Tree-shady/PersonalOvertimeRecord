@@ -173,7 +173,9 @@ class SyncManager(
             val backupData = BackupData(
                 version = SYNC_DATA_VERSION,
                 exportTime = System.currentTimeMillis(),
-                settings = syncSettings,
+                // 上传时剥离密码字段：避免同步加密未开启时，
+                // 导出/同步加密密码以明文形式暴露在 WebDAV 服务器上
+                settings = syncSettings.copy(exportPassword = "", syncPassword = ""),
                 attendanceRecords = recordsToUpload
             )
 
@@ -238,7 +240,15 @@ class SyncManager(
             }
 
             if (options.syncSettings) {
-                settingsManager.saveSettings(backupData.settings)
+                // 云端设置不含密码字段（上传时已剥离）；恢复时保留本地已配置的密码，
+                // 避免云端空密码覆盖本机的导出/同步加密密码
+                val localSettings = settingsManager.getSettings()
+                settingsManager.saveSettings(
+                    backupData.settings.copy(
+                        exportPassword = localSettings.exportPassword,
+                        syncPassword = localSettings.syncPassword
+                    )
+                )
             }
 
             settingsManager.saveLastSyncTime(System.currentTimeMillis())

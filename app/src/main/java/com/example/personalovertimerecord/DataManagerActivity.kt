@@ -13,7 +13,9 @@ import com.example.personalovertimerecord.data.SettingsManager
 import com.example.personalovertimerecord.databinding.ActivityDataManagerBinding
 import com.example.personalovertimerecord.utils.CsvImporter
 import com.example.personalovertimerecord.utils.DataExporter
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -133,10 +135,15 @@ class DataManagerActivity : AppCompatActivity() {
     private fun importFromCsv(uri: android.net.Uri) {
         lifecycleScope.launch {
             try {
-                contentResolver.openInputStream(uri)?.use { inputStream ->
-                    val result = CsvImporter.importFromCsv(this@DataManagerActivity, inputStream)
+                // 文件读取 + 逐行解析都切到 IO 线程，避免大文件在主线程解析导致卡顿/ANR
+                val result = withContext(Dispatchers.IO) {
+                    contentResolver.openInputStream(uri)?.use { inputStream ->
+                        CsvImporter.importFromCsv(this@DataManagerActivity, inputStream)
+                    }
+                }
+                if (result != null) {
                     showImportResultDialog(result)
-                } ?: run {
+                } else {
                     Toast.makeText(this@DataManagerActivity, "无法读取文件", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
@@ -186,7 +193,14 @@ class DataManagerActivity : AppCompatActivity() {
     private fun restoreData(backupData: com.example.personalovertimerecord.utils.BackupData) {
         lifecycleScope.launch {
             try {
-                settingsManager.saveSettings(backupData.settings)
+                // 备份文件中的设置不含密码（导出时已剥离）；恢复时保留本地已配置的密码
+                val localSettings = settingsManager.getSettings()
+                settingsManager.saveSettings(
+                    backupData.settings.copy(
+                        exportPassword = localSettings.exportPassword,
+                        syncPassword = localSettings.syncPassword
+                    )
+                )
                 dataExporter.restoreDataFull(backupData)
                 
                 Toast.makeText(this@DataManagerActivity, "数据恢复成功！", Toast.LENGTH_LONG).show()

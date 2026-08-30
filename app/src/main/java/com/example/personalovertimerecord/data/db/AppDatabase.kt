@@ -12,7 +12,7 @@ import net.sqlcipher.database.SupportFactory
 
 @Database(
     entities = [AttendanceEntity::class],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -25,6 +25,13 @@ abstract class AppDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
+        /**
+         * 加密库打开失败并降级到明文库时的原因（null 表示加密库正常工作）。
+         * 供 UI 在启动检查时向用户明示"数据保护已降级"，避免静默无感知。
+         */
+        @Volatile
+        var encryptionFallbackReason: String? = null
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: createDatabase(context).also { INSTANCE = it }
@@ -33,9 +40,11 @@ abstract class AppDatabase : RoomDatabase() {
         
         private fun createDatabase(context: Context): AppDatabase {
             return try {
+                encryptionFallbackReason = null
                 createEncryptedDatabase(context)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to create encrypted database, falling back to unencrypted", e)
+                encryptionFallbackReason = e.message ?: e.javaClass.simpleName
                 createUnencryptedDatabase(context)
             }
         }
@@ -50,7 +59,7 @@ abstract class AppDatabase : RoomDatabase() {
                 "overtime_database"
             )
                 .openHelperFactory(factory)
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                 .fallbackToDestructiveMigration()
                 .build()
         }
@@ -61,7 +70,7 @@ abstract class AppDatabase : RoomDatabase() {
                 AppDatabase::class.java,
                 "overtime_database_unencrypted"
             )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                 .fallbackToDestructiveMigration()
                 .build()
         }
@@ -98,6 +107,16 @@ abstract class AppDatabase : RoomDatabase() {
                 // 添加 isDeleted 列，默认值为 0（未删除）
                 database.execSQL(
                     "ALTER TABLE attendance_records ADD COLUMN isDeleted INTEGER NOT NULL DEFAULT 0"
+                )
+            }
+        }
+
+        // 从版本4迁移到版本5，为 date 列添加索引（按日期查询/排序更高效）
+        // 索引名与 Room 对 @Index(value=["date"]) 自动生成的名称保持一致
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_attendance_records_date ON attendance_records(date)"
                 )
             }
         }

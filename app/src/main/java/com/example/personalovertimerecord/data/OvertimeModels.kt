@@ -1,17 +1,30 @@
 package com.example.personalovertimerecord.data
 
-import java.util.UUID
-
+/**
+ * 加班/请假记录模型（取代已废弃的 Attendance，作为 Room 与 UI 间的唯一模型）。
+ *
+ * 语义说明：
+ * - overtimeHours / extraHours：< 0 表示用户未手工设置（由打卡自动计算），
+ *   与数据库实体 manualOvertimeHours/manualExtraHours 的 -1 哨兵值保持一致；
+ * - dayType / totalPay：仅供导出/展示使用，由 OvertimeCalculator 归一化后填充。
+ */
 data class OvertimeRecord(
-    val id: String = UUID.randomUUID().toString(),
+    val id: Long = 0L,
     val date: String,
-    val overtimeHours: Double = 0.0,
-    val extraHours: Double = 0.0,
+    val overtimeHours: Double = -1.0,
+    val extraHours: Double = -1.0,
     val note: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
-    // 新增字段
+    // 打卡时间
     val checkInTime: String? = null,
     val checkOutTime: String? = null,
+    val checkInTimestamp: Long? = null,
+    val checkOutTimestamp: Long? = null,
+    // 请假字段
+    val isLeave: Boolean = false,
+    val leaveType: String? = null,
+    val leaveHours: Double = 0.0,
+    // 导出/展示用归一化字段
     val dayType: String = "平时",
     val totalPay: Double = 0.0
 )

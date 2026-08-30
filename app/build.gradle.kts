@@ -10,44 +10,48 @@ plugins {
 
 // 版本号自动管理
 // 优先级：CI 传入（git tag，如 -PciVersionName=1.3.0 -PciVersionCode=10300） > 本地 version.properties 自动递增
+// versionName 为三段格式（如 0.1.4）；versionCode 用递增构建号（BUILD_NUMBER）
+// 注意：变量必须加 app 前缀，避免与 defaultConfig 的属性（versionCode/versionName）同名被遮蔽，
+// 否则 defaultConfig 内赋值时右侧会解析成 self-assignment，导致 APK 版本号为空（与下方签名配置同理）
 val versionPropsFile = file("version.properties")
-var versionCode = 1
-var versionName = "1.3.0.1"
+var appVersionCode = 1
+var appVersionName = "0.1.4"
 
 val ciVersionName = project.findProperty("ciVersionName") as String?
 val ciVersionCode = project.findProperty("ciVersionCode") as String?
 
 if (!ciVersionName.isNullOrBlank() && !ciVersionCode.isNullOrBlank()) {
     // CI（GitHub Actions）根据 git tag 传入版本号，不修改 version.properties
-    versionCode = ciVersionCode.toInt()
-    versionName = ciVersionName
-    println("🔢 CI version from tag: $versionName (build #$versionCode)")
+    appVersionCode = ciVersionCode.toInt()
+    appVersionName = ciVersionName
+    println("🔢 CI version from tag: $appVersionName (build #$appVersionCode)")
 } else if (versionPropsFile.exists()) {
     val props = Properties()
     versionPropsFile.inputStream().use { props.load(it) }
     val buildNumber = props.getProperty("BUILD_NUMBER", "1").toInt()
-    val baseVersion = props.getProperty("BASE_VERSION", "1.3.0")
+    val baseVersion = props.getProperty("BASE_VERSION", "0.1.4")
     
     // 递增构建号
     val newBuildNumber = buildNumber + 1
     props.setProperty("BUILD_NUMBER", newBuildNumber.toString())
     versionPropsFile.outputStream().use { props.store(it, "Auto-incremented build number") }
     
-    versionCode = newBuildNumber
-    versionName = "${baseVersion}.${newBuildNumber}"
+    appVersionCode = newBuildNumber
+    // versionName 只保留三段基础版本号（如 0.1.4），不再追加构建号
+    appVersionName = baseVersion
     
-    println("🔢 Version auto-incremented: $versionName (build #$versionCode)")
+    println("🔢 Version auto-incremented: $appVersionName (build #$appVersionCode)")
 } else {
     // 首次创建版本文件
     val props = Properties()
-    props.setProperty("BASE_VERSION", "1.3.0")
+    props.setProperty("BASE_VERSION", "0.1.4")
     props.setProperty("BUILD_NUMBER", "1")
     versionPropsFile.outputStream().use { props.store(it, "Initial version properties") }
     
-    versionCode = 1
-    versionName = "1.3.0.1"
+    appVersionCode = 1
+    appVersionName = "0.1.4"
     
-    println("🔢 Version initialized: $versionName (build #$versionCode)")
+    println("🔢 Version initialized: $appVersionName (build #$appVersionCode)")
 }
 
 // 签名配置：仅当 CI 注入环境变量（GitHub Secrets）时启用，本地构建保持不签名/自动签名，不受影响
@@ -88,8 +92,8 @@ android {
         applicationId = "com.example.personalovertimerecord"
         minSdk = 24
         targetSdk = 36
-        versionCode = versionCode
-        versionName = versionName
+        versionCode = appVersionCode
+        versionName = appVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

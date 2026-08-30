@@ -9,11 +9,12 @@ import android.view.MotionEvent
 import android.view.View
 import androidx.core.content.ContextCompat
 import com.example.personalovertimerecord.R
-import com.example.personalovertimerecord.data.Attendance
+import com.example.personalovertimerecord.data.OvertimeRecord
 import com.example.personalovertimerecord.data.OvertimeSettings
 import com.example.personalovertimerecord.data.SettingsManager
 import com.example.personalovertimerecord.utils.OvertimeCalculator
 import java.util.Calendar
+import java.util.Locale
 
 class CalendarView @JvmOverloads constructor(
     context: Context,
@@ -29,10 +30,30 @@ class CalendarView @JvmOverloads constructor(
     private var currentYear: Int = 0
     private var currentMonth: Int = 0
     
-    private var attendanceData: Map<String, Attendance> = emptyMap()
     private var settingsManager: SettingsManager? = null
     // 缓存 settings，避免在 onDraw 中频繁读取 SharedPreferences
     private var cachedSettings: OvertimeSettings? = null
+    
+    /**
+     * 预计算的每日展示数据（date -> DayCell）。
+     * 在 setAttendanceData 时一次性构建，onDraw 只读，
+     * 避免每帧重复解析日期、计算加班金额与格式化字符串。
+     */
+    private var dayCells: Map<String, DayCell> = emptyMap()
+    
+    /**
+     * 预计算的日期字符串（"yyyy-MM-dd"），按日序号索引，下标 0 保留。
+     */
+    private var dayDateStrs: Array<String> = emptyArray()
+    
+    private data class DayCell(
+        val overtimeHours: Double,
+        val extraHours: Double,
+        val hasData: Boolean,
+        val hoursText: String,
+        val extraText: String,
+        val payText: String?
+    )
     
     private val calendar = Calendar.getInstance()
     private var daysInMonth: Int = 0
@@ -119,10 +140,31 @@ class CalendarView @JvmOverloads constructor(
         this.listener = listener
     }
     
-    fun setAttendanceData(data: List<Attendance>, manager: SettingsManager) {
+    fun setAttendanceData(data: List<OvertimeRecord>, manager: SettingsManager) {
         this.settingsManager = manager
         this.cachedSettings = manager.getSettings()
-        attendanceData = data.associateBy { it.date }
+        val settings = cachedSettings ?: OvertimeSettings()
+        // 预计算每个日期的展示信息（时长文本/费用文本），onDraw 只读缓存
+        dayCells = data.mapNotNull { a ->
+            val overtimeHours = if (a.overtimeHours >= 0) a.overtimeHours else 0.0
+            val extraHours = if (a.extraHours >= 0) a.extraHours else 0.0
+            val hasData = overtimeHours > 0 || extraHours > 0
+            if (!hasData) return@mapNotNull null
+            val payText = if (hasData) {
+                val pay = OvertimeCalculator.calculateOvertime(a, settings).estimatedPay
+                if (pay > 0) String.format(Locale.getDefault(), "¥%.2f", pay) else null
+            } else {
+                null
+            }
+            a.date to DayCell(
+                overtimeHours = overtimeHours,
+                extraHours = extraHours,
+                hasData = true,
+                hoursText = "${overtimeHours}h",
+                extraText = "${extraHours}加",
+                payText = payText
+            )
+        }.toMap()
         invalidate()
     }
     
@@ -130,6 +172,10 @@ class CalendarView @JvmOverloads constructor(
         calendar.set(currentYear, currentMonth, 1)
         daysInMonth = calendar.getActualMaximum(Calendar.DAY_OF_MONTH)
         firstDayOfWeek = calendar.get(Calendar.DAY_OF_WEEK) - 1
+        // 预计算每日日期字符串，避免 onDraw 每帧分配
+        dayDateStrs = Array(daysInMonth + 1) { day ->
+            if (day == 0) "" else String.format(Locale.getDefault(), "%d-%02d-%02d", currentYear, currentMonth + 1, day)
+        }
     }
     
     override fun onDraw(canvas: Canvas) {
@@ -161,14 +207,9 @@ class CalendarView @JvmOverloads constructor(
             val centerX = left + cellWidth / 2
             val centerY = top + cellHeight / 2
             
-            val dateStr = String.format("%d-%02d-%02d", currentYear, currentMonth + 1, day)
-            val attendance = attendanceData[dateStr]
-            
-            // 处理默认值：负数表示未设置，视为0
-            val overtimeHours = if (attendance != null && attendance.manualOvertimeHours >= 0) attendance.manualOvertimeHours else 0.0
-            val extraHours = if (attendance != null && attendance.manualExtraHours >= 0) attendance.manualExtraHours else 0.0
-            
-            val hasData = attendance != null && (overtimeHours > 0 || extraHours > 0)
+            // 直接读取预计算缓存，不再每帧解析日期/计算金额
+            val cell = dayCells[dayDateStrs[day]]
+            val hasData = cell?.hasData == true
             
             // 绘制背景圆
             if (hasData) {
@@ -192,55 +233,33 @@ class CalendarView @JvmOverloads constructor(
                 paint
             )
             
-            // 绘制加班信息
-            if (hasData && attendance != null) {
-                // 复用 OvertimeCalculator 计算金额，保证与列表/报表口径一致
-                // （周末按 2 倍、节假日按 3 倍计算；此前这里错误地固定按 1.5 倍）
-                val settings = cachedSettings ?: OvertimeSettings()
-                val result = OvertimeCalculator.calculateOvertime(attendance, settings)
-                val totalPay = result.estimatedPay
-                
-                // 显示加班和加点时长
+            // 绘制加班信息（使用预计算文本）
+            if (hasData && cell != null) {
                 var infoY = centerY + cellHeight / 8
                 
-                val hasOvertime = overtimeHours > 0
-                val hasExtra = extraHours > 0
+                val hasOvertime = cell.overtimeHours > 0
+                val hasExtra = cell.extraHours > 0
                 
                 if (hasOvertime && hasExtra) {
                     // 同时有加班和加点，显示为 "Xh+Y加"
                     canvas.drawText(
-                        "${overtimeHours}h+${extraHours}加",
+                        "${cell.hoursText}+${cell.extraText}",
                         centerX,
                         infoY,
                         overtimeInfoPaint
                     )
                     infoY += overtimeInfoPaint.textSize + 2
                 } else if (hasOvertime) {
-                    canvas.drawText(
-                        "${overtimeHours}h",
-                        centerX,
-                        infoY,
-                        overtimeInfoPaint
-                    )
+                    canvas.drawText(cell.hoursText, centerX, infoY, overtimeInfoPaint)
                     infoY += overtimeInfoPaint.textSize + 2
                 } else if (hasExtra) {
-                    canvas.drawText(
-                        "${extraHours}加",
-                        centerX,
-                        infoY,
-                        overtimeInfoPaint
-                    )
+                    canvas.drawText(cell.extraText, centerX, infoY, overtimeInfoPaint)
                     infoY += overtimeInfoPaint.textSize + 2
                 }
                 
-                // 显示费用
-                if (totalPay > 0) {
-                    canvas.drawText(
-                        "¥${String.format("%.2f", totalPay)}",
-                        centerX,
-                        infoY,
-                        moneyTextPaint
-                    )
+                // 显示费用（预计算文本）
+                cell.payText?.let {
+                    canvas.drawText(it, centerX, infoY, moneyTextPaint)
                 }
             }
         }

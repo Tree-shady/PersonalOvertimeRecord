@@ -7,7 +7,6 @@ import androidx.appcompat.app.AlertDialog
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
-import com.example.personalovertimerecord.data.Attendance
 import com.example.personalovertimerecord.data.DayType
 import com.example.personalovertimerecord.data.OvertimeRecord
 import com.example.personalovertimerecord.data.OvertimeSettings
@@ -138,23 +137,7 @@ class ReportActivity : AppCompatActivity() {
                     val monthPrefix = String.format(Locale.getDefault(), "%04d-%02d", currentYear, currentMonth)
                     val overtimeRecords = records
                         .filter { it.date.startsWith(monthPrefix) }
-                        .map { attendance ->
-                            OvertimeRecord(
-                                id = attendance.id.toString(),
-                                date = attendance.date,
-                                checkInTime = attendance.checkInTime,
-                                checkOutTime = attendance.checkOutTime,
-                                overtimeHours = if (attendance.manualOvertimeHours >= 0) attendance.manualOvertimeHours else 0.0,
-                                extraHours = if (attendance.manualExtraHours >= 0) attendance.manualExtraHours else 0.0,
-                                note = attendance.note,
-                                dayType = OvertimeCalculator.effectiveDayType(
-                                    attendance.date,
-                                    if (attendance.manualOvertimeHours >= 0) attendance.manualOvertimeHours else 0.0,
-                                    if (attendance.manualExtraHours >= 0) attendance.manualExtraHours else 0.0
-                                ).name,
-                                totalPay = OvertimeCalculator.calculateOvertime(attendance, settings).estimatedPay
-                            )
-                        }
+                        .map { it.toExportRecord() }
                     
                     PdfExporter.exportToPdf(
                         this@ReportActivity,
@@ -183,30 +166,21 @@ class ReportActivity : AppCompatActivity() {
             try {
                 val file = withContext(Dispatchers.IO) {
                     val records = viewModel.allAttendance.value ?: emptyList()
-                    val overtimeRecords = records.map { attendance ->
-                        OvertimeRecord(
-                            id = attendance.id.toString(),
-                            date = attendance.date,
-                            checkInTime = attendance.checkInTime,
-                            checkOutTime = attendance.checkOutTime,
-                            overtimeHours = if (attendance.manualOvertimeHours >= 0) attendance.manualOvertimeHours else 0.0,
-                            extraHours = if (attendance.manualExtraHours >= 0) attendance.manualExtraHours else 0.0,
-                            note = attendance.note,
-                            dayType = OvertimeCalculator.effectiveDayType(
-                                attendance.date,
-                                if (attendance.manualOvertimeHours >= 0) attendance.manualOvertimeHours else 0.0,
-                                if (attendance.manualExtraHours >= 0) attendance.manualExtraHours else 0.0
-                            ).name,
-                            totalPay = OvertimeCalculator.calculateOvertime(attendance, settings).estimatedPay
-                        )
-                    }
+                    // 与 PDF 导出口径一致：仅导出当前选中月份的数据
+                    val monthPrefix = String.format(Locale.getDefault(), "%04d-%02d", currentYear, currentMonth)
+                    val overtimeRecords = records
+                        .filter { it.date.startsWith(monthPrefix) }
+                        .map { it.toExportRecord() }
                     
+                    // 按"导出加密"设置对 CSV 加密（启用时生成 .enc 文件，原始文件删除）
+                    val password = if (settings.exportEncryptionEnabled) settings.exportPassword else null
                     CsvExporter.exportMonthlySummary(
                         this@ReportActivity,
                         currentYear,
                         currentMonth,
                         overtimeRecords,
-                        settings
+                        settings,
+                        password
                     )
                 }
                 
@@ -236,18 +210,23 @@ class ReportActivity : AppCompatActivity() {
         }
     }
     
-    private fun updateReport(attendanceList: List<Attendance>) {
-        updateMonthlyOverview(attendanceList)
+    private fun updateReport(attendanceList: List<OvertimeRecord>) {
+        // 单次遍历分组，供各图表/统计复用，避免每次刷新多次全表扫描
+        val monthPrefix = String.format(Locale.getDefault(), "%04d-%02d", currentYear, currentMonth)
+        val yearPrefix = "$currentYear-"
+        val monthRecords = attendanceList.filter { it.date.startsWith(monthPrefix) }
+        val yearRecords = attendanceList.filter { it.date.startsWith(yearPrefix) }
+        // "yyyy-MM" -> 当月记录，柱状图/折线图直接查表
+        val byMonth: Map<String, List<OvertimeRecord>> = yearRecords.groupBy { it.date.substring(0, 7) }
+        
+        updateMonthlyOverview(monthRecords)
         updateSalaryOverview(attendanceList)
-        setupBarChart(attendanceList)
-        setupPieChart(attendanceList)
-        setupLineChart(attendanceList)
+        setupBarChart(byMonth)
+        setupPieChart(monthRecords)
+        setupLineChart(byMonth)
     }
     
-    private fun updateMonthlyOverview(attendanceList: List<Attendance>) {
-        val monthPrefix = String.format(Locale.getDefault(), "%04d-%02d", currentYear, currentMonth)
-        val monthRecords = attendanceList.filter { it.date.startsWith(monthPrefix) }
-        
+    private fun updateMonthlyOverview(monthRecords: List<OvertimeRecord>) {
         var totalHours = 0.0
         var totalPay = 0.0
         val overtimeDays = mutableSetOf<String>()
@@ -267,7 +246,7 @@ class ReportActivity : AppCompatActivity() {
         binding.tvTotalPay.text = Formatter.formatMoney(totalPay)
     }
     
-    private fun updateSalaryOverview(attendanceList: List<Attendance>) {
+    private fun updateSalaryOverview(attendanceList: List<OvertimeRecord>) {
         val report = SalaryCalculator.calculateMonthlySalary(
             attendanceList,
             settings,
@@ -283,26 +262,23 @@ class ReportActivity : AppCompatActivity() {
         binding.tvTotalSalary.text = Formatter.formatMoney(totalSalary)
     }
     
-    private fun setupBarChart(attendanceList: List<Attendance>) {
-        val yearPrefix = "${currentYear}-"
-        val yearRecords = attendanceList.filter { it.date.startsWith(yearPrefix) }
-        
+    private fun setupBarChart(byMonth: Map<String, List<OvertimeRecord>>) {
         val monthLabels = mutableListOf<String>()
         val entries = mutableListOf<BarEntry>()
         
         for (month in 1..12) {
             val monthStr = String.format(Locale.getDefault(), "%02d月", month)
-            val monthPrefix = String.format(Locale.getDefault(), "%04d-%02d", currentYear, month)
-            val monthRecords = yearRecords.filter { it.date.startsWith(monthPrefix) }
+            val monthKey = String.format(Locale.getDefault(), "%04d-%02d", currentYear, month)
+            val monthRecords = byMonth[monthKey] ?: emptyList()
             
             var overtimeHours = 0f
             var extraHours = 0f
             monthRecords.forEach { record ->
-                if (record.manualOvertimeHours >= 0) {
-                    overtimeHours += record.manualOvertimeHours.toFloat()
+                if (record.overtimeHours >= 0) {
+                    overtimeHours += record.overtimeHours.toFloat()
                 }
-                if (record.manualExtraHours >= 0) {
-                    extraHours += record.manualExtraHours.toFloat()
+                if (record.extraHours >= 0) {
+                    extraHours += record.extraHours.toFloat()
                 }
             }
             
@@ -334,19 +310,16 @@ class ReportActivity : AppCompatActivity() {
         }
     }
     
-    private fun setupPieChart(attendanceList: List<Attendance>) {
-        // 饼图按当前选中月份统计，形成月度加班类型分布
-        val monthPrefix = String.format(Locale.getDefault(), "%04d-%02d", currentYear, currentMonth)
-        val monthRecords = attendanceList.filter { it.date.startsWith(monthPrefix) }
-        
+    private fun setupPieChart(monthRecords: List<OvertimeRecord>) {
+        // 饼图按当前选中月份统计，形成月度加班类型分布（记录已按月份过滤）
         var normalHours = 0f
         var weekendHours = 0f
         var holidayHours = 0f
         
         monthRecords.forEach { record ->
             // 处理默认值：负数表示未设置，视为0
-            val overtimeHours = if (record.manualOvertimeHours >= 0) record.manualOvertimeHours else 0.0
-            val extraHours = if (record.manualExtraHours >= 0) record.manualExtraHours else 0.0
+            val overtimeHours = if (record.overtimeHours >= 0) record.overtimeHours else 0.0
+            val extraHours = if (record.extraHours >= 0) record.extraHours else 0.0
             val totalHours = overtimeHours + extraHours
 
             // 以登记内容分类（加点→工作日，加班→周末/节假日），与金额计算口径一致
@@ -391,15 +364,12 @@ class ReportActivity : AppCompatActivity() {
         }
     }
     
-    private fun setupLineChart(attendanceList: List<Attendance>) {
-        val yearPrefix = "${currentYear}-"
-        val yearRecords = attendanceList.filter { it.date.startsWith(yearPrefix) }
-        
+    private fun setupLineChart(byMonth: Map<String, List<OvertimeRecord>>) {
         val monthData = mutableListOf<Pair<String, Float>>()
         for (month in 1..12) {
             val monthStr = String.format(Locale.getDefault(), "%02d月", month)
-            val monthPrefix = String.format(Locale.getDefault(), "%04d-%02d", currentYear, month)
-            val monthRecords = yearRecords.filter { it.date.startsWith(monthPrefix) }
+            val monthKey = String.format(Locale.getDefault(), "%04d-%02d", currentYear, month)
+            val monthRecords = byMonth[monthKey] ?: emptyList()
             
             var totalPay = 0f
             monthRecords.forEach { record ->
@@ -434,5 +404,20 @@ class ReportActivity : AppCompatActivity() {
             legend.isEnabled = false
             invalidate()
         }
+    }
+    
+    /**
+     * 将记录归一化为导出用数据（PDF/CSV 共用，保证口径一致）：
+     * 把 -1 哨兵值（未手工设置）归一为 0，并填充 dayType / totalPay 供导出展示。
+     */
+    private fun OvertimeRecord.toExportRecord(): OvertimeRecord {
+        val overtime = if (overtimeHours >= 0) overtimeHours else 0.0
+        val extra = if (extraHours >= 0) extraHours else 0.0
+        return copy(
+            overtimeHours = overtime,
+            extraHours = extra,
+            dayType = OvertimeCalculator.effectiveDayType(date, overtime, extra).name,
+            totalPay = OvertimeCalculator.calculateOvertime(this, settings).estimatedPay
+        )
     }
 }

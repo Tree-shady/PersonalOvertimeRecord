@@ -2,7 +2,7 @@ package com.example.personalovertimerecord.utils
 
 import android.content.Context
 import android.graphics.Color
-import com.example.personalovertimerecord.data.Attendance
+import com.example.personalovertimerecord.data.OvertimeRecord
 import com.example.personalovertimerecord.data.OvertimeSettings
 import com.github.mikephil.charting.charts.BarChart
 import com.github.mikephil.charting.charts.LineChart
@@ -152,7 +152,7 @@ object ChartHelper {
         chart.invalidate()
     }
     
-    fun calculateMonthlyData(attendanceList: List<Attendance>, year: Int): List<MonthData> {
+    fun calculateMonthlyData(attendanceList: List<OvertimeRecord>, year: Int): List<MonthData> {
         val monthData = mutableListOf<MonthData>()
         val calendar = Calendar.getInstance()
         
@@ -165,11 +165,11 @@ object ChartHelper {
             
             var totalHours = 0f
             monthRecords.forEach { record ->
-                if (record.manualOvertimeHours >= 0) {
-                    totalHours += record.manualOvertimeHours.toFloat()
+                if (record.overtimeHours >= 0) {
+                    totalHours += record.overtimeHours.toFloat()
                 }
-                if (record.manualExtraHours >= 0) {
-                    totalHours += record.manualExtraHours.toFloat()
+                if (record.extraHours >= 0) {
+                    totalHours += record.extraHours.toFloat()
                 }
             }
             
@@ -181,14 +181,14 @@ object ChartHelper {
         return monthData
     }
     
-    fun calculateOvertimeTypeData(attendanceList: List<Attendance>): List<OvertimeTypeData> {
+    fun calculateOvertimeTypeData(attendanceList: List<OvertimeRecord>): List<OvertimeTypeData> {
         var normalHours = 0f
         var weekendHours = 0f
         var holidayHours = 0f
         
         attendanceList.forEach { record ->
             val dayType = HolidayManager.getDayType(record.date)
-            val hours = record.manualOvertimeHours.toFloat()
+            val hours = if (record.overtimeHours >= 0) record.overtimeHours.toFloat() else 0f
             
             when (dayType) {
                 com.example.personalovertimerecord.data.DayType.WORKDAY -> normalHours += hours

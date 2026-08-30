@@ -39,6 +39,15 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Verify keystore & print alias
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 -d > /tmp/release.keystore 2>/dev/null || echo "$KEYSTORE_BASE64" | base64 --decode > /tmp/release.keystore
+          echo "=== keystore 别名(alias)与 store 密码校验 ==="
+          keytool -list -keystore /tmp/release.keystore -storepass "$KEYSTORE_PASSWORD" 2>&1 || echo "⚠️  store 密码错误，请检查 KEYSTORE_PASSWORD"
+
       - name: Build signed APK from tag
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
@@ -61,8 +70,49 @@ jobs:
             -PciVersionName="$VERSION" \
             -PciVersionCode="$CODE"
 
+      - name: Generate latest.json update manifest
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          # 与 Build 步骤相同的版本号逻辑（run 之间 shell 状态不保留，需重新计算）
+          VERSION="${GITHUB_REF_NAME#v}"
+          SEGS=$(echo "$VERSION" | awk -F. '{print NF}')
+          if [ "$SEGS" = "3" ]; then
+            CODE=$(echo "$VERSION" | awk -F. '{printf "%d%02d%02d", $1, $2, $3}')
+          else
+            CODE=$(echo "$VERSION" | awk -F. '{printf "%d%02d%02d%02d", $1, $2, $3, $4}')
+          fi
+
+          APK=$(ls app/build/outputs/apk/release/*.apk | head -n1)
+          APK_NAME=$(basename "$APK")
+          SHA256=$(sha256sum "$APK" | awk '{print $1}')
+
+          # 更新日志：自上个 tag 以来的提交记录（无上个 tag 时取最近 10 条）
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD~1 2>/dev/null || true)
+          if [ -n "$PREV_TAG" ]; then
+            CHANGES=$(git log --oneline "$PREV_TAG..HEAD" | head -n 30)
+          else
+            CHANGES=$(git log --oneline -10)
+          fi
+
+          # minVersionCode 填 0 表示非强制更新；需要强制时把 0 改为目标最低版本号
+          jq -n \
+            --arg versionCode "$CODE" \
+            --arg versionName "$VERSION" \
+            --arg apkUrl "https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/${APK_NAME}" \
+            --arg sha256 "$SHA256" \
+            --arg changelog "$CHANGES" \
+            --argjson minVersionCode 0 \
+            '{versionCode: ($versionCode|tonumber), versionName: $versionName, apkUrl: $apkUrl, sha256: $sha256, changelog: $changelog, minVersionCode: $minVersionCode}' \
+            > app/build/outputs/apk/release/latest.json
+
+          echo "=== latest.json ==="
+          cat app/build/outputs/apk/release/latest.json
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: app/build/outputs/apk/release/*.apk
+          files: |
+            app/build/outputs/apk/release/*.apk
+            app/build/outputs/apk/release/latest.json
           generate_release_notes: true

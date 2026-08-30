@@ -1,13 +1,18 @@
 package com.example.personalovertimerecord.data.db
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
-import com.example.personalovertimerecord.data.Attendance
+import com.example.personalovertimerecord.data.OvertimeRecord
 
 /**
  * Room数据库实体 - 加班记录表
+ * date 加索引：按日期查询/排序（列表、日历、按月统计）更高效
  */
-@Entity(tableName = "attendance_records")
+@Entity(
+    tableName = "attendance_records",
+    indices = [Index(value = ["date"])]
+)
 data class AttendanceEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0L,
@@ -30,10 +35,10 @@ data class AttendanceEntity(
     val isDeleted: Boolean = false
 ) {
     /**
-     * 转换为Attendance数据模型
+     * 转换为记录模型（OvertimeRecord）
      */
-    fun toAttendance(): Attendance {
-        return Attendance(
+    fun toRecord(): OvertimeRecord {
+        return OvertimeRecord(
             id = id,
             date = date,
             checkInTime = checkInTime,
@@ -41,8 +46,9 @@ data class AttendanceEntity(
             checkInTimestamp = checkInTimestamp,
             checkOutTimestamp = checkOutTimestamp,
             note = note,
-            manualOvertimeHours = manualOvertimeHours,
-            manualExtraHours = manualExtraHours,
+            overtimeHours = manualOvertimeHours,
+            extraHours = manualExtraHours,
+            createdAt = createdAt,
             isLeave = isLeave,
             leaveType = leaveType,
             leaveHours = leaveHours
@@ -51,24 +57,24 @@ data class AttendanceEntity(
 
     companion object {
         /**
-         * 从Attendance数据模型创建实体
+         * 从记录模型（OvertimeRecord）创建实体
          */
-        fun fromAttendance(attendance: Attendance): AttendanceEntity {
+        fun fromRecord(record: OvertimeRecord): AttendanceEntity {
             val now = System.currentTimeMillis()
             return AttendanceEntity(
-                id = attendance.id,
-                date = attendance.date,
-                checkInTime = attendance.checkInTime,
-                checkOutTime = attendance.checkOutTime,
-                checkInTimestamp = attendance.checkInTimestamp,
-                checkOutTimestamp = attendance.checkOutTimestamp,
-                note = attendance.note,
-                manualOvertimeHours = attendance.manualOvertimeHours,
-                manualExtraHours = attendance.manualExtraHours,
+                id = record.id,
+                date = record.date,
+                checkInTime = record.checkInTime,
+                checkOutTime = record.checkOutTime,
+                checkInTimestamp = record.checkInTimestamp,
+                checkOutTimestamp = record.checkOutTimestamp,
+                note = record.note,
+                manualOvertimeHours = record.overtimeHours,
+                manualExtraHours = record.extraHours,
                 modifiedAt = now,
-                isLeave = attendance.isLeave,
-                leaveType = attendance.leaveType,
-                leaveHours = attendance.leaveHours
+                isLeave = record.isLeave,
+                leaveType = record.leaveType,
+                leaveHours = record.leaveHours
             )
         }
     }
