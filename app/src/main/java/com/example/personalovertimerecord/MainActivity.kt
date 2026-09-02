@@ -334,18 +334,25 @@ class MainActivity : AppCompatActivity() {
         )
         
         val existingAttendance = viewModel.allAttendance.value?.find { it.date == dateStr }
-        
-        val newAttendance = existingAttendance?.copy(
-            checkInTime = currentTime,
-            checkInTimestamp = System.currentTimeMillis()
-        ) ?: Attendance(
-            id = 0,
-            date = dateStr,
-            checkInTime = currentTime,
-            checkInTimestamp = System.currentTimeMillis()
-        )
-        
-        viewModel.addAttendance(newAttendance)
+
+        if (existingAttendance != null) {
+            // 今日已有记录（如先登记过加班）：更新上班时间，避免插入重复日期记录
+            viewModel.updateAttendance(
+                existingAttendance.copy(
+                    checkInTime = currentTime,
+                    checkInTimestamp = System.currentTimeMillis()
+                )
+            )
+        } else {
+            viewModel.addAttendance(
+                Attendance(
+                    id = 0,
+                    date = dateStr,
+                    checkInTime = currentTime,
+                    checkInTimestamp = System.currentTimeMillis()
+                )
+            )
+        }
         Toast.makeText(this, "上班打卡成功！时间：$currentTime", Toast.LENGTH_SHORT).show()
         updateCheckInStatus()
     }
