@@ -2,7 +2,7 @@
 
 一个功能丰富、稳定可靠的Android应用，用于记录个人的加班信息和计算加班工资。
 
-![Version](https://img.shields.io/badge/version-1.3.0-blue)
+![Version](https://img.shields.io/badge/version-0.1.4.3-blue)
 ![Min SDK](https://img.shields.io/badge/minSdk-24-green)
 ![Target SDK](https://img.shields.io/badge/targetSdk-36-orange)
 

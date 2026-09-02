@@ -39,6 +39,15 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Verify keystore & print alias
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 -d > /tmp/release.keystore 2>/dev/null || echo "$KEYSTORE_BASE64" | base64 --decode > /tmp/release.keystore
+          echo "=== keystore 别名(alias)与 store 密码校验 ==="
+          keytool -list -keystore /tmp/release.keystore -storepass "$KEYSTORE_PASSWORD" 2>&1 || echo "⚠️  store 密码错误，请检查 KEYSTORE_PASSWORD"
+
       - name: Build signed APK from tag
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
