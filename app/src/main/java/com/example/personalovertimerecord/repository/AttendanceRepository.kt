@@ -1,6 +1,6 @@
 package com.example.personalovertimerecord.repository
 
-import com.example.personalovertimerecord.data.Attendance
+import com.example.personalovertimerecord.data.OvertimeRecord
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -12,37 +12,37 @@ interface AttendanceRepository {
     /**
      * 获取所有记录（Flow版本，支持响应式更新）
      */
-    fun getAllAttendanceFlow(): Flow<List<Attendance>>
+    fun getAllAttendanceFlow(): Flow<List<OvertimeRecord>>
     
     /**
      * 获取所有记录（同步版本）
      */
-    suspend fun getAllAttendance(): List<Attendance>
+    suspend fun getAllAttendance(): List<OvertimeRecord>
     
     /**
      * 根据日期获取记录
      */
-    suspend fun getAttendanceByDate(date: String): Attendance?
+    suspend fun getAttendanceByDate(date: String): OvertimeRecord?
     
     /**
      * 根据ID获取记录
      */
-    suspend fun getAttendanceById(id: Long): Attendance?
+    suspend fun getAttendanceById(id: Long): OvertimeRecord?
     
     /**
      * 插入或更新记录
      */
-    suspend fun saveAttendance(attendance: Attendance): Long
+    suspend fun saveAttendance(attendance: OvertimeRecord): Long
     
     /**
      * 插入新记录
      */
-    suspend fun insertAttendance(attendance: Attendance): Long
+    suspend fun insertAttendance(attendance: OvertimeRecord): Long
     
     /**
      * 更新记录
      */
-    suspend fun updateAttendance(attendance: Attendance)
+    suspend fun updateAttendance(attendance: OvertimeRecord)
     
     /**
      * 删除记录

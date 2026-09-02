@@ -8,10 +8,22 @@
         <exclude domain="sharedpref" path="overtime_prefs"/>
         <exclude domain="sharedpref" path="attendance_prefs"/>
         <exclude domain="sharedpref" path="app_prefs"/>
+        <!-- 数据库密钥密文、生物识别开关、同步/提醒配置 -->
+        <exclude domain="sharedpref" path="db_key_prefs"/>
+        <exclude domain="sharedpref" path="biometric_prefs"/>
+        <exclude domain="sharedpref" path="auto_sync_prefs"/>
+        <exclude domain="sharedpref" path="reminder_prefs"/>
+        <exclude domain="sharedpref" path="permission_prefs"/>
+        <exclude domain="sharedpref" path="data_manager"/>
+        <!-- 加密数据库及明文降级库 -->
         <exclude domain="database" path="overtime_database"/>
         <exclude domain="database" path="overtime_database-journal"/>
         <exclude domain="database" path="overtime_database-wal"/>
         <exclude domain="database" path="overtime_database-shm"/>
+        <exclude domain="database" path="overtime_database_unencrypted"/>
+        <exclude domain="database" path="overtime_database_unencrypted-journal"/>
+        <exclude domain="database" path="overtime_database_unencrypted-wal"/>
+        <exclude domain="database" path="overtime_database_unencrypted-shm"/>
     </cloud-backup>
     <device-transfer>
         <!-- 设备迁移时同样排除敏感数据 -->
@@ -20,6 +32,19 @@
         <exclude domain="sharedpref" path="overtime_prefs"/>
         <exclude domain="sharedpref" path="attendance_prefs"/>
         <exclude domain="sharedpref" path="app_prefs"/>
+        <exclude domain="sharedpref" path="db_key_prefs"/>
+        <exclude domain="sharedpref" path="biometric_prefs"/>
+        <exclude domain="sharedpref" path="auto_sync_prefs"/>
+        <exclude domain="sharedpref" path="reminder_prefs"/>
+        <exclude domain="sharedpref" path="permission_prefs"/>
+        <exclude domain="sharedpref" path="data_manager"/>
         <exclude domain="database" path="overtime_database"/>
+        <exclude domain="database" path="overtime_database-journal"/>
+        <exclude domain="database" path="overtime_database-wal"/>
+        <exclude domain="database" path="overtime_database-shm"/>
+        <exclude domain="database" path="overtime_database_unencrypted"/>
+        <exclude domain="database" path="overtime_database_unencrypted-journal"/>
+        <exclude domain="database" path="overtime_database_unencrypted-wal"/>
+        <exclude domain="database" path="overtime_database_unencrypted-shm"/>
     </device-transfer>
 </data-extraction-rules>

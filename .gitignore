@@ -17,3 +17,5 @@ local.properties
 *.jks
 *.keystore
 /keystore/
+# 嵌套项目副本（独立 Git 仓库，含敏感文件，避免误提交）
+/PersonalOvertimeRecord/

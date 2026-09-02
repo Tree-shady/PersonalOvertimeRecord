@@ -3,4 +3,8 @@
     <external-files-path
         name="exports"
         path="." />
+    <!-- 软件更新：下载到缓存目录的 APK 通过 FileProvider 分享给系统安装器 -->
+    <cache-path
+        name="updates"
+        path="updates/" />
 </paths>

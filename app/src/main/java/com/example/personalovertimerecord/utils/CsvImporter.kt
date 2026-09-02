@@ -1,8 +1,8 @@
 package com.example.personalovertimerecord.utils
 
 import android.content.Context
-import com.example.personalovertimerecord.data.Attendance
 import com.example.personalovertimerecord.data.LeaveType
+import com.example.personalovertimerecord.data.OvertimeRecord
 import com.example.personalovertimerecord.data.db.AttendanceEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -62,10 +62,10 @@ object CsvImporter {
                     val values = parseCsvLine(line)
                     
                     try {
-                        val attendance = parseAttendance(values, headers)
-                        if (attendance != null) {
+                        val record = parseRecord(values, headers)
+                        if (record != null) {
                             // 转换为实体
-                            val entity = AttendanceEntity.fromAttendance(attendance)
+                            val entity = AttendanceEntity.fromRecord(record)
                             entities.add(entity)
                         } else {
                             failedCount++
@@ -174,7 +174,7 @@ object CsvImporter {
     /**
      * 解析考勤记录
      */
-    private fun parseAttendance(values: List<String>, headers: List<String>?): Attendance? {
+    private fun parseRecord(values: List<String>, headers: List<String>?): OvertimeRecord? {
         if (values.isEmpty()) return null
         
         // 使用表头或默认顺序
@@ -236,13 +236,13 @@ object CsvImporter {
         // 标准化日期格式
         date = normalizeDate(date)
         
-        return Attendance(
-            id = 0,
+        return OvertimeRecord(
+            id = 0L,
             date = date,
             checkInTime = checkInTime,
             checkOutTime = checkOutTime,
-            manualOvertimeHours = overtimeHours ?: -1.0,
-            manualExtraHours = extraHours ?: -1.0,
+            overtimeHours = overtimeHours ?: -1.0,
+            extraHours = extraHours ?: -1.0,
             note = note,
             checkInTimestamp = null,
             checkOutTimestamp = null,

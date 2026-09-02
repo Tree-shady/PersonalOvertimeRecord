@@ -1,6 +1,6 @@
 package com.example.personalovertimerecord.repository
 
-import com.example.personalovertimerecord.data.Attendance
+import com.example.personalovertimerecord.data.OvertimeRecord
 import com.example.personalovertimerecord.data.db.AppDatabase
 import com.example.personalovertimerecord.data.db.AttendanceEntity
 import kotlinx.coroutines.flow.Flow
@@ -20,39 +20,39 @@ class RoomAttendanceRepository(
      * 获取所有记录（Flow版本）
      * 支持响应式更新，当数据库变化时会自动通知观察者
      */
-    override fun getAllAttendanceFlow(): Flow<List<Attendance>> {
+    override fun getAllAttendanceFlow(): Flow<List<OvertimeRecord>> {
         return dao.getAllRecords().map { entities ->
-            entities.map { it.toAttendance() }
+            entities.map { it.toRecord() }
         }
     }
     
     /**
      * 获取所有记录（同步版本）
      */
-    override suspend fun getAllAttendance(): List<Attendance> {
-        return dao.getAllRecordsSync().map { it.toAttendance() }
+    override suspend fun getAllAttendance(): List<OvertimeRecord> {
+        return dao.getAllRecordsSync().map { it.toRecord() }
     }
     
     /**
      * 根据日期获取记录
      */
-    override suspend fun getAttendanceByDate(date: String): Attendance? {
-        return dao.getRecordByDate(date)?.toAttendance()
+    override suspend fun getAttendanceByDate(date: String): OvertimeRecord? {
+        return dao.getRecordByDate(date)?.toRecord()
     }
     
     /**
      * 根据ID获取记录
      */
-    override suspend fun getAttendanceById(id: Long): Attendance? {
-        return dao.getRecordById(id)?.toAttendance()
+    override suspend fun getAttendanceById(id: Long): OvertimeRecord? {
+        return dao.getRecordById(id)?.toRecord()
     }
     
     /**
      * 插入或更新记录
      * 如果记录存在则更新，不存在则插入
      */
-    override suspend fun saveAttendance(attendance: Attendance): Long {
-        val entity = AttendanceEntity.fromAttendance(attendance)
+    override suspend fun saveAttendance(attendance: OvertimeRecord): Long {
+        val entity = AttendanceEntity.fromRecord(attendance)
         return dao.insertOrUpdate(entity)
     }
     
@@ -60,21 +60,21 @@ class RoomAttendanceRepository(
      * 插入新记录
      * 使用ID=0来确保插入新记录
      */
-    override suspend fun insertAttendance(attendance: Attendance): Long {
+    override suspend fun insertAttendance(attendance: OvertimeRecord): Long {
         val newAttendance = if (attendance.id == 0L) {
             attendance
         } else {
             attendance.copy(id = 0L) // 强制ID为0，确保插入新记录
         }
-        val entity = AttendanceEntity.fromAttendance(newAttendance)
+        val entity = AttendanceEntity.fromRecord(newAttendance)
         return dao.insertOrUpdate(entity)
     }
     
     /**
      * 更新记录
      */
-    override suspend fun updateAttendance(attendance: Attendance) {
-        val entity = AttendanceEntity.fromAttendance(attendance)
+    override suspend fun updateAttendance(attendance: OvertimeRecord) {
+        val entity = AttendanceEntity.fromRecord(attendance)
         dao.insertOrUpdate(entity)
     }
     

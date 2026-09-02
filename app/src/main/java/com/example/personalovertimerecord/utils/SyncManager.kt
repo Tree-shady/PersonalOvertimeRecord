@@ -238,8 +238,7 @@ class SyncManager(
             }
 
             if (options.syncSettings) {
-                // 密码不随同步传输，保留本机已保存的加密密码
-                settingsManager.saveSyncedSettings(backupData.settings)
+                settingsManager.saveSettings(backupData.settings)
             }
 
             settingsManager.saveLastSyncTime(System.currentTimeMillis())
@@ -389,8 +388,7 @@ class SyncManager(
 
                 // 双向合并后同步设置（与 uploadBackup/downloadAndRestore 行为一致）
                 if (options.syncSettings) {
-                    // 密码不随同步传输，保留本机已保存的加密密码
-                    settingsManager.saveSyncedSettings(mergedSettings)
+                    settingsManager.saveSettings(mergedSettings)
                 }
 
                 settingsManager.saveLastSyncTime(System.currentTimeMillis())

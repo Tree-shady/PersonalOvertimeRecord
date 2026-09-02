@@ -58,7 +58,7 @@ class OvertimeStorage(context: Context) {
         saveAllRecords(list)
     }
     
-    fun deleteRecordById(id: String) {
+    fun deleteRecordById(id: Long) {
         val list = getAllRecords().toMutableList()
         list.removeAll { it.id == id }
         saveAllRecords(list)
@@ -85,10 +85,10 @@ class OvertimeStorage(context: Context) {
     
     private fun jsonToRecord(json: JSONObject): OvertimeRecord {
         return OvertimeRecord(
-            id = json.getString("id"),
+            id = json.optLong("id", 0L),
             date = json.getString("date"),
-            overtimeHours = json.optDouble("overtimeHours", 0.0),
-            extraHours = json.optDouble("extraHours", 0.0),
+            overtimeHours = json.optDouble("overtimeHours", -1.0),
+            extraHours = json.optDouble("extraHours", -1.0),
             note = json.optString("note", null),
             createdAt = json.optLong("createdAt", System.currentTimeMillis())
         )

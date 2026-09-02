@@ -1,7 +1,7 @@
 package com.example.personalovertimerecord.utils
 
-import com.example.personalovertimerecord.data.Attendance
 import com.example.personalovertimerecord.data.DayType
+import com.example.personalovertimerecord.data.OvertimeRecord
 import com.example.personalovertimerecord.data.OvertimeSettings
 import java.util.Calendar
 import java.util.Locale
@@ -45,7 +45,7 @@ object SalaryCalculator {
     )
     
     fun calculateMonthlySalary(
-        attendanceList: List<Attendance>,
+        attendanceList: List<OvertimeRecord>,
         settings: OvertimeSettings,
         year: Int,
         month: Int
@@ -62,12 +62,12 @@ object SalaryCalculator {
         var weekendDays = 0
         var holidayDays = 0
         
-        monthRecords.forEach { attendance ->
-            val overtime = if (attendance.manualOvertimeHours >= 0) attendance.manualOvertimeHours else 0.0
-            val extra = if (attendance.manualExtraHours >= 0) attendance.manualExtraHours else 0.0
+        monthRecords.forEach { record ->
+            val overtime = if (record.overtimeHours >= 0) record.overtimeHours else 0.0
+            val extra = if (record.extraHours >= 0) record.extraHours else 0.0
 
             // 与 OvertimeCalculator 保持一致：以登记内容分类（加点→工作日，加班→周末/节假日）
-            val dayType = OvertimeCalculator.effectiveDayType(attendance.date, overtime, extra)
+            val dayType = OvertimeCalculator.effectiveDayType(record.date, overtime, extra)
 
             when (dayType) {
                 DayType.WORKDAY -> {
@@ -131,15 +131,15 @@ object SalaryCalculator {
     }
     
     fun calculateDailySalaries(
-        attendanceList: List<Attendance>,
+        attendanceList: List<OvertimeRecord>,
         settings: OvertimeSettings
     ): List<DailySalary> {
-        return attendanceList.map { attendance ->
-            val overtime = if (attendance.manualOvertimeHours >= 0) attendance.manualOvertimeHours else 0.0
-            val extra = if (attendance.manualExtraHours >= 0) attendance.manualExtraHours else 0.0
+        return attendanceList.map { record ->
+            val overtime = if (record.overtimeHours >= 0) record.overtimeHours else 0.0
+            val extra = if (record.extraHours >= 0) record.extraHours else 0.0
 
             // 与 OvertimeCalculator 保持一致：以登记内容分类（加点→工作日，加班→周末/节假日）
-            val dayType = OvertimeCalculator.effectiveDayType(attendance.date, overtime, extra)
+            val dayType = OvertimeCalculator.effectiveDayType(record.date, overtime, extra)
             
             val performanceBonus = settings.baseSalary * (settings.performancePercent / 100.0)
             val totalMonthlySalary = settings.baseSalary + performanceBonus
@@ -161,7 +161,7 @@ object SalaryCalculator {
             val totalPay = overtimePay + extraPay
             
             DailySalary(
-                date = attendance.date,
+                date = record.date,
                 dayType = dayType,
                 overtimeHours = overtime,
                 extraHours = extra,
@@ -171,7 +171,7 @@ object SalaryCalculator {
     }
     
     fun calculateYearlySalary(
-        attendanceList: List<Attendance>,
+        attendanceList: List<OvertimeRecord>,
         settings: OvertimeSettings,
         year: Int
     ): List<SalaryReport> {

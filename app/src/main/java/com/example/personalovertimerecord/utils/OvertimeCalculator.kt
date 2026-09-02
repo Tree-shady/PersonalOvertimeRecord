@@ -1,6 +1,5 @@
 package com.example.personalovertimerecord.utils
 
-import com.example.personalovertimerecord.data.Attendance
 import com.example.personalovertimerecord.data.DayType
 import com.example.personalovertimerecord.data.OvertimeRecord
 import com.example.personalovertimerecord.data.OvertimeResult
@@ -31,23 +30,12 @@ object OvertimeCalculator {
         record: OvertimeRecord,
         settings: OvertimeSettings
     ): OvertimeResult {
-        return calculateInternal(
-            date = record.date,
-            overtimeHours = record.overtimeHours,
-            extraHours = record.extraHours,
-            settings = settings
-        )
-    }
-    
-    fun calculateOvertime(
-        attendance: Attendance,
-        settings: OvertimeSettings
-    ): OvertimeResult {
-        val overtimeHours = if (attendance.manualOvertimeHours >= 0) attendance.manualOvertimeHours else 0.0
-        val extraHours = if (attendance.manualExtraHours >= 0) attendance.manualExtraHours else 0.0
+        // 归一化 -1 哨兵值（未手工设置）为 0
+        val overtimeHours = if (record.overtimeHours >= 0) record.overtimeHours else 0.0
+        val extraHours = if (record.extraHours >= 0) record.extraHours else 0.0
         
         return calculateInternal(
-            date = attendance.date,
+            date = record.date,
             overtimeHours = overtimeHours,
             extraHours = extraHours,
             settings = settings
