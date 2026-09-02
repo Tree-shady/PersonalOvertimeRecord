@@ -195,24 +195,96 @@ object UpdateManager {
     }
 
     /**
-     * 校验下载的 APK 签名与当前已安装应用一致，防止下载包被篡改。
+     * 签名校验结果。
+     * - [Match]：签名一致，可以安装；
+     * - [Mismatch]：能读到双方签名但密钥不一致（如已装调试版、安装包被替换）；
+     * - [Unreadable]：某一方签名读不出来（包损坏/解析失败）。
      */
-    fun verifyApkSignature(context: Context, apkFile: File): Boolean {
+    sealed class SignatureVerifyResult {
+        object Match : SignatureVerifyResult()
+        data class Mismatch(val installedDigest: String?, val archiveDigest: String?) : SignatureVerifyResult()
+        object Unreadable : SignatureVerifyResult()
+    }
+
+    /**
+     * 校验下载的 APK 签名与当前已安装应用一致，防止下载包被篡改。
+     *
+     * 注意：Android 9（API 28）起必须使用 GET_SIGNING_CERTIFICATES 配合
+     * SigningInfo.apkContentsSigners 读取签名；旧的 GET_SIGNATURES 方式对
+     * 仅使用 v2/v3 签名方案（无 v1 JAR 签名）的安装包会返回空签名，导致误判为校验失败。
+     */
+    fun verifyApkSignature(context: Context, apkFile: File): SignatureVerifyResult {
         return try {
             val pm = context.packageManager
-            @Suppress("DEPRECATION")
-            val installed = pm.getPackageInfo(context.packageName, PackageManager.GET_SIGNATURES)
-            @Suppress("DEPRECATION")
-            val archive = pm.getPackageArchiveInfo(apkFile.absolutePath, PackageManager.GET_SIGNATURES)
-                ?: return false
-            val installedSignatures = installed.signatures?.toList() ?: return false
-            val archiveSignatures = archive.signatures?.toList() ?: return false
-            archiveSignatures.any { archiveSig ->
-                installedSignatures.any { it.toByteArray().contentEquals(archiveSig.toByteArray()) }
+            // API 28+ 使用 GET_SIGNING_CERTIFICATES（正确支持 v1/v2/v3 签名方案）；
+            // 旧版本回退 GET_SIGNATURES（API 24-27 的 PackageParser 可从 v2 签名回填 certificates）
+            val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                PackageManager.GET_SIGNING_CERTIFICATES
+            } else {
+                @Suppress("DEPRECATION")
+                PackageManager.GET_SIGNATURES
+            }
+
+            val installed = try {
+                pm.getPackageInfo(context.packageName, flags)
+            } catch (e: PackageManager.NameNotFoundException) {
+                AppLogger.e(TAG, "读取已安装应用信息失败", e)
+                null
+            }
+            val archive = pm.getPackageArchiveInfo(apkFile.absolutePath, flags)
+
+            val installedSigs = installed?.let { extractSignatures(it) } ?: emptyArray()
+            val archiveSigs = archive?.let { extractSignatures(it) } ?: emptyArray()
+
+            if (installedSigs.isEmpty() || archiveSigs.isEmpty()) {
+                AppLogger.e(
+                    TAG,
+                    "无法读取签名: 已安装应用签名数=${installedSigs.size}, 更新包签名数=${archiveSigs.size}"
+                )
+                return SignatureVerifyResult.Unreadable
+            }
+
+            val installedDigests = installedSigs.map { fingerprint(it) }
+            val archiveDigests = archiveSigs.map { fingerprint(it) }
+            AppLogger.i(TAG, "已安装应用证书指纹: $installedDigests")
+            AppLogger.i(TAG, "更新包证书指纹: $archiveDigests")
+
+            val matched = archiveSigs.any { archiveSig ->
+                installedSigs.any { it.toByteArray().contentEquals(archiveSig.toByteArray()) }
+            }
+            if (matched) {
+                SignatureVerifyResult.Match
+            } else {
+                SignatureVerifyResult.Mismatch(
+                    installedDigest = installedDigests.firstOrNull(),
+                    archiveDigest = archiveDigests.firstOrNull()
+                )
             }
         } catch (e: Exception) {
             AppLogger.e(TAG, "APK 签名校验失败", e)
-            false
+            SignatureVerifyResult.Unreadable
+        }
+    }
+
+    /** 从 PackageInfo 中提取签名证书，兼容新旧两套 API */
+    @Suppress("DEPRECATION")
+    private fun extractSignatures(packageInfo: android.content.pm.PackageInfo): Array<android.content.pm.Signature> {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            // apkContentsSigners 为实际签署 APK 内容的证书，覆盖 v1/v2/v3 签名方案
+            packageInfo.signingInfo?.apkContentsSigners ?: emptyArray()
+        } else {
+            packageInfo.signatures ?: emptyArray()
+        }
+    }
+
+    /** 签名证书的 SHA-256 指纹（用于日志比对排查） */
+    private fun fingerprint(signature: android.content.pm.Signature): String {
+        return try {
+            MessageDigest.getInstance("SHA-256")
+                .digest(signature.toByteArray())
+                .joinToString("") { "%02x".format(it) }
+        } catch (e: Exception) {
+            "unknown"
         }
     }
 

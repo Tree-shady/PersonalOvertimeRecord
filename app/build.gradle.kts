@@ -79,6 +79,10 @@ android {
                 storePassword = envKeystorePassword
                 keyAlias = envKeyAlias
                 keyPassword = envKeyPassword
+                // minSdk=24 时 AGP 默认只打 v2 签名；显式开启 v1（JAR）签名，
+                // 保证旧版签名读取路径/第三方工具也能校验，v2/v3 保持默认开启
+                enableV1Signing = true
+                enableV2Signing = true
             }
         }
     }

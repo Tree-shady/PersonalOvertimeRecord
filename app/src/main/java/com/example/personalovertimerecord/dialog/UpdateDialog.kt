@@ -9,6 +9,7 @@ import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
+import com.example.personalovertimerecord.BuildConfig
 import com.example.personalovertimerecord.utils.UpdateManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -115,16 +116,29 @@ object UpdateDialog {
                 return@launch
             }
 
-            // 签名一致性校验（下载包被篡改时拒绝安装）
-            if (!UpdateManager.verifyApkSignature(context, apkFile)) {
-                apkFile.delete()
-                Toast.makeText(context, "更新包校验失败，已取消安装", Toast.LENGTH_LONG).show()
-                return@launch
-            }
-
-            val started = UpdateManager.installApk(context, apkFile)
-            if (!started) {
-                Toast.makeText(context, "启动安装失败，请重试", Toast.LENGTH_LONG).show()
+            // 签名一致性校验（下载包被篡改/签名不兼容时拒绝安装）
+            when (UpdateManager.verifyApkSignature(context, apkFile)) {
+                is UpdateManager.SignatureVerifyResult.Match -> {
+                    val started = UpdateManager.installApk(context, apkFile)
+                    if (!started) {
+                        Toast.makeText(context, "启动安装失败，请重试", Toast.LENGTH_LONG).show()
+                    }
+                }
+                is UpdateManager.SignatureVerifyResult.Mismatch -> {
+                    apkFile.delete()
+                    val msg = if (BuildConfig.DEBUG) {
+                        "更新包签名与当前应用不一致，已取消安装。\n" +
+                            "当前安装的是调试版（debug 签名），无法升级为正式签名版；" +
+                            "请先安装正式版再测试更新，或发布与已安装应用同签名的更新包。"
+                    } else {
+                        "更新包签名与当前应用不一致，已取消安装。请确认更新来自官方渠道后重试。"
+                    }
+                    Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                }
+                is UpdateManager.SignatureVerifyResult.Unreadable -> {
+                    apkFile.delete()
+                    Toast.makeText(context, "无法验证更新包签名，安装包可能已损坏，请重新下载", Toast.LENGTH_LONG).show()
+                }
             }
         }
     }
