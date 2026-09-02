@@ -1,6 +1,7 @@
 package com.example.personalovertimerecord.data
 
 import java.util.UUID
+import kotlin.jvm.Transient
 
 data class OvertimeRecord(
     val id: String = UUID.randomUUID().toString(),
@@ -28,8 +29,12 @@ data class OvertimeSettings(
     var workEndTime: String = "17:00",
     // 加密相关设置
     var exportEncryptionEnabled: Boolean = false,
+    // 密码不随备份/同步序列化（Gson 默认排除 transient 字段），
+    // 避免明文密码写入备份文件或上传到 WebDAV；恢复设置时由 SettingsManager 保留本机密码
+    @Transient
     var exportPassword: String = "",
     var syncEncryptionEnabled: Boolean = false,
+    @Transient
     var syncPassword: String = ""
 )
 

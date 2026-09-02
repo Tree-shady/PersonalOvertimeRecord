@@ -2,7 +2,7 @@ package com.example.personalovertimerecord.data
 
 @Deprecated("Use OvertimeRecord instead", ReplaceWith("OvertimeRecord"))
 data class Attendance(
-    val id: Long,
+    val id: Long = 0L,
     val date: String,
     val checkInTime: String? = null,
     val checkOutTime: String? = null,

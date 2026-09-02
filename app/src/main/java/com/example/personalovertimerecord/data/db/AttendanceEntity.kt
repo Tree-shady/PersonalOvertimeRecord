@@ -1,13 +1,18 @@
 package com.example.personalovertimerecord.data.db
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 import com.example.personalovertimerecord.data.Attendance
 
 /**
  * Room数据库实体 - 加班记录表
+ * date 列加唯一索引：同一天只允许一条记录，从数据库层面防止重复打卡/重复登记
  */
-@Entity(tableName = "attendance_records")
+@Entity(
+    tableName = "attendance_records",
+    indices = [Index(value = ["date"], unique = true)]
+)
 data class AttendanceEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0L,

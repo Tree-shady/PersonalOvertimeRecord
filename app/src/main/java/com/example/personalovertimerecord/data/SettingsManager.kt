@@ -29,6 +29,21 @@ class SettingsManager(context: Context) {
         }
     }
     
+    /**
+     * 保存来自备份文件/云端同步的设置。
+     * 加密密码不随备份传输（OvertimeSettings 中为 transient），
+     * 恢复时保留本机已保存的密码，避免密码被清空后下次同步变为明文上传。
+     */
+    fun saveSyncedSettings(settings: OvertimeSettings) {
+        val current = getSettings()
+        saveSettings(
+            settings.copy(
+                exportPassword = current.exportPassword,
+                syncPassword = current.syncPassword
+            )
+        )
+    }
+
     fun getSettings(): OvertimeSettings {
         return OvertimeSettings(
             workStartTime = prefs.getString(KEY_WORK_START, "08:00") ?: "08:00",

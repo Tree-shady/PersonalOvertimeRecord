@@ -186,7 +186,8 @@ class DataManagerActivity : AppCompatActivity() {
     private fun restoreData(backupData: com.example.personalovertimerecord.utils.BackupData) {
         lifecycleScope.launch {
             try {
-                settingsManager.saveSettings(backupData.settings)
+                // 密码不随备份传输，恢复设置时保留本机已保存的加密密码
+                settingsManager.saveSyncedSettings(backupData.settings)
                 dataExporter.restoreDataFull(backupData)
                 
                 Toast.makeText(this@DataManagerActivity, "数据恢复成功！", Toast.LENGTH_LONG).show()

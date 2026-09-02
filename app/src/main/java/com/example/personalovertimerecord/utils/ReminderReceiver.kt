@@ -3,6 +3,7 @@ package com.example.personalovertimerecord.utils
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import com.example.personalovertimerecord.data.DayType
 import java.util.Calendar
 
 /**
@@ -25,12 +26,16 @@ class ReminderReceiver : BroadcastReceiver() {
         val title = intent.getStringExtra(EXTRA_TITLE) ?: "打卡提醒"
         val message = intent.getStringExtra(EXTRA_MESSAGE) ?: "该打卡了！"
         
-        // 检查是否仅在工作日提醒
+        // 检查是否仅在工作日提醒：法定节假日/周末不提醒，调休补班日（周末上班）正常提醒
         if (ReminderManager.isWorkdaysOnly()) {
-            val today = Calendar.getInstance().get(Calendar.DAY_OF_WEEK)
-            // 周六和周日不提醒
-            if (today == Calendar.SATURDAY || today == Calendar.SUNDAY) {
-                // 重新调度明天的提醒
+            val now = Calendar.getInstance()
+            val todayStr = DateUtils.formatDate(
+                now.get(Calendar.YEAR),
+                now.get(Calendar.MONTH),
+                now.get(Calendar.DAY_OF_MONTH)
+            )
+            if (HolidayManager.getDayType(todayStr) != DayType.WORKDAY) {
+                // 今日非工作日，跳过本次提醒并重新调度下一次
                 when (requestCode) {
                     2001 -> ReminderManager.scheduleWorkReminder(context)
                     2002 -> ReminderManager.scheduleOffWorkReminder(context)

@@ -12,7 +12,7 @@ import net.sqlcipher.database.SupportFactory
 
 @Database(
     entities = [AttendanceEntity::class],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -50,18 +50,18 @@ abstract class AppDatabase : RoomDatabase() {
                 "overtime_database"
             )
                 .openHelperFactory(factory)
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                 .fallbackToDestructiveMigration()
                 .build()
         }
-        
+
         private fun createUnencryptedDatabase(context: Context): AppDatabase {
             return Room.databaseBuilder(
                 context.applicationContext,
                 AppDatabase::class.java,
                 "overtime_database_unencrypted"
             )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                 .fallbackToDestructiveMigration()
                 .build()
         }
@@ -98,6 +98,34 @@ abstract class AppDatabase : RoomDatabase() {
                 // 添加 isDeleted 列，默认值为 0（未删除）
                 database.execSQL(
                     "ALTER TABLE attendance_records ADD COLUMN isDeleted INTEGER NOT NULL DEFAULT 0"
+                )
+            }
+        }
+
+        // 从版本4迁移到版本5：为 date 列添加唯一索引，防止同一天出现多条记录
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                // 先清理历史重复数据：同一日期只保留一条
+                // （优先保留未删除记录中 id 最大的；若该日期全部已删除则保留 id 最大的墓碑记录）
+                database.execSQL(
+                    """
+                    DELETE FROM attendance_records
+                    WHERE id NOT IN (
+                        SELECT keep_id FROM (
+                            SELECT COALESCE(
+                                (SELECT MAX(id) FROM attendance_records a2
+                                 WHERE a2.date = a1.date AND a2.isDeleted = 0),
+                                (SELECT MAX(id) FROM attendance_records a3
+                                 WHERE a3.date = a1.date)
+                            ) AS keep_id
+                            FROM (SELECT DISTINCT date FROM attendance_records) a1
+                        )
+                    )
+                    """.trimIndent()
+                )
+                // 创建唯一索引（索引名与 Room 根据 @Index 生成的名称保持一致）
+                database.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS `index_attendance_records_date` ON attendance_records (`date`)"
                 )
             }
         }
