@@ -2,7 +2,7 @@ package com.example.personalovertimerecord
 
 import org.junit.Test
 import org.junit.Assert.*
-import com.example.personalovertimerecord.data.Attendance
+import com.example.personalovertimerecord.data.OvertimeRecord
 import com.example.personalovertimerecord.data.OvertimeSettings
 import com.example.personalovertimerecord.utils.Formatter
 import com.example.personalovertimerecord.utils.OvertimeCalculator
@@ -23,13 +23,13 @@ class OvertimeCalculatorTest {
 
     @Test
     fun testCalculateOvertime_ManualOvertime() {
-        val attendance = Attendance(
+        val record = OvertimeRecord(
             date = "2024-06-15",
-            manualOvertimeHours = 2.0,
-            manualExtraHours = 1.0
+            overtimeHours = 2.0,
+            extraHours = 1.0
         )
 
-        val result = OvertimeCalculator.calculateOvertime(attendance, testSettings)
+        val result = OvertimeCalculator.calculateOvertime(record, testSettings)
 
         assertEquals(2.0, result.overtimeHours, 0.001)
         assertEquals(1.0, result.extraHours, 0.001)
@@ -42,13 +42,13 @@ class OvertimeCalculatorTest {
     @Test
     fun testCalculateOvertime_NoManualHours() {
         // 未手工填写加班时长（默认 -1）时按 0 计算，不会崩溃
-        val attendance = Attendance(
+        val record = OvertimeRecord(
             date = "2024-06-15",
             checkInTime = "09:00",
             checkOutTime = "21:00"
         )
 
-        val result = OvertimeCalculator.calculateOvertime(attendance, testSettings)
+        val result = OvertimeCalculator.calculateOvertime(record, testSettings)
 
         assertEquals(0.0, result.overtimeHours, 0.001)
         assertEquals(0.0, result.extraHours, 0.001)
@@ -57,13 +57,13 @@ class OvertimeCalculatorTest {
 
     @Test
     fun testCalculateOvertime_NegativeManualHoursTreatedAsZero() {
-        val attendance = Attendance(
+        val record = OvertimeRecord(
             date = "2024-06-14",
-            manualOvertimeHours = -1.0,
-            manualExtraHours = -1.0
+            overtimeHours = -1.0,
+            extraHours = -1.0
         )
 
-        val result = OvertimeCalculator.calculateOvertime(attendance, testSettings)
+        val result = OvertimeCalculator.calculateOvertime(record, testSettings)
 
         assertEquals(0.0, result.overtimeHours, 0.001)
         assertEquals(0.0, result.estimatedPay, 0.001)
@@ -85,12 +85,12 @@ class OvertimeCalculatorTest {
     @Test
     fun testEffectiveDayType_OvertimeOnWorkdayIsWeekend() {
         // 2024-06-14 是周五（工作日），但登记了加班 → 应按周末 2 倍计算
-        val attendance = Attendance(
+        val record = OvertimeRecord(
             date = "2024-06-14",
-            manualOvertimeHours = 3.0,
-            manualExtraHours = -1.0
+            overtimeHours = 3.0,
+            extraHours = -1.0
         )
-        val result = OvertimeCalculator.calculateOvertime(attendance, testSettings)
+        val result = OvertimeCalculator.calculateOvertime(record, testSettings)
 
         assertEquals(0.0, result.normalOvertime, 0.001)
         assertEquals(3.0, result.weekendOvertime, 0.001)
@@ -101,12 +101,12 @@ class OvertimeCalculatorTest {
     @Test
     fun testEffectiveDayType_OvertimeOnHolidayIsHoliday() {
         // 2024-10-01 是国庆节（日历节假日），登记加班 → 按 3 倍计算
-        val attendance = Attendance(
+        val record = OvertimeRecord(
             date = "2024-10-01",
-            manualOvertimeHours = 4.0,
-            manualExtraHours = -1.0
+            overtimeHours = 4.0,
+            extraHours = -1.0
         )
-        val result = OvertimeCalculator.calculateOvertime(attendance, testSettings)
+        val result = OvertimeCalculator.calculateOvertime(record, testSettings)
 
         assertEquals(4.0, result.holidayOvertime, 0.001)
         val hourlyWage = 5000.0 / (21.75 * 8.0)
@@ -116,12 +116,12 @@ class OvertimeCalculatorTest {
     @Test
     fun testEffectiveDayType_ExtraOnWeekendIsWorkday() {
         // 2024-06-15 是周六（周末），但只登记了加点 → 应按工作日 1.5 倍计算
-        val attendance = Attendance(
+        val record = OvertimeRecord(
             date = "2024-06-15",
-            manualOvertimeHours = -1.0,
-            manualExtraHours = 2.0
+            overtimeHours = -1.0,
+            extraHours = 2.0
         )
-        val result = OvertimeCalculator.calculateOvertime(attendance, testSettings)
+        val result = OvertimeCalculator.calculateOvertime(record, testSettings)
 
         assertEquals(0.0, result.weekendOvertime, 0.001)
         val hourlyWage = 5000.0 / (21.75 * 8.0)
@@ -131,12 +131,12 @@ class OvertimeCalculatorTest {
     @Test
     fun testEffectiveDayType_NothingRegisteredUsesCalendar() {
         // 什么都没登记 → 按日历：2024-06-15 周六 → 周末分类，但加班为 0 金额为 0
-        val attendance = Attendance(
+        val record = OvertimeRecord(
             date = "2024-06-15"
         )
         assertEquals(
             com.example.personalovertimerecord.data.DayType.WEEKEND,
-            OvertimeCalculator.effectiveDayType(attendance.date, 0.0, 0.0)
+            OvertimeCalculator.effectiveDayType(record.date, 0.0, 0.0)
         )
     }
 }

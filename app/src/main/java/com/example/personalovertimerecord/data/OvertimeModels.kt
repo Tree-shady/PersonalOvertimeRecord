@@ -1,18 +1,32 @@
 package com.example.personalovertimerecord.data
 
-import java.util.UUID
 import kotlin.jvm.Transient
 
+/**
+ * 加班/请假记录模型（取代已废弃的 Attendance，作为 Room 与 UI 间的唯一模型）。
+ *
+ * 语义说明：
+ * - overtimeHours / extraHours：< 0 表示用户未手工设置（由打卡自动计算），
+ *   与数据库实体 manualOvertimeHours/manualExtraHours 的 -1 哨兵值保持一致；
+ * - dayType / totalPay：仅供导出/展示使用，由 OvertimeCalculator 归一化后填充。
+ */
 data class OvertimeRecord(
-    val id: String = UUID.randomUUID().toString(),
+    val id: Long = 0L,
     val date: String,
-    val overtimeHours: Double = 0.0,
-    val extraHours: Double = 0.0,
+    val overtimeHours: Double = -1.0,
+    val extraHours: Double = -1.0,
     val note: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
-    // 新增字段
+    // 打卡时间
     val checkInTime: String? = null,
     val checkOutTime: String? = null,
+    val checkInTimestamp: Long? = null,
+    val checkOutTimestamp: Long? = null,
+    // 请假字段
+    val isLeave: Boolean = false,
+    val leaveType: String? = null,
+    val leaveHours: Double = 0.0,
+    // 导出/展示用归一化字段
     val dayType: String = "平时",
     val totalPay: Double = 0.0
 )
@@ -29,8 +43,8 @@ data class OvertimeSettings(
     var workEndTime: String = "17:00",
     // 加密相关设置
     var exportEncryptionEnabled: Boolean = false,
-    // 密码不随备份/同步序列化（Gson 默认排除 transient 字段），
-    // 避免明文密码写入备份文件或上传到 WebDAV；恢复设置时由 SettingsManager 保留本机密码
+    // 密码不参与 Gson 序列化（双保险：导出/上传处也会主动剥离），
+    // 防止明文密码写入备份文件或 WebDAV 服务器
     @Transient
     var exportPassword: String = "",
     var syncEncryptionEnabled: Boolean = false,
