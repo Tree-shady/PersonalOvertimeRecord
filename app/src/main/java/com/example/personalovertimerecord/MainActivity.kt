@@ -123,8 +123,14 @@ class MainActivity : AppCompatActivity() {
     /**
      * 静默检查更新：距上次成功检查超过 24 小时才请求服务器。
      * 检查失败静默忽略（不打扰启动流程），设置页可手动重试。
+     *
+     * Debug 包不参与自动更新检查：本地构建号每次构建自动递增，很容易超过
+     * GitHub 最新发布的 versionCode（tag 映射值较小），导致应用误判"已是最新"、
+     * 拉不到远端新版本。需要验证更新流程时可在设置页手动"检查更新"。
      */
     private fun checkUpdateSilently() {
+        // 本地调试包跳过自动更新检查
+        if (BuildConfig.DEBUG) return
         if (!UpdateManager.shouldCheck(this, Constants.UPDATE_CHECK_INTERVAL_MS)) return
         if (!NetworkUtils.isNetworkAvailable(this)) return
         

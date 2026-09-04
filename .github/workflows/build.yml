@@ -54,6 +54,36 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: ./gradlew assembleRelease
 
+      # 把 APK 重命名为带版本号的名字（PersonalOvertimeRecord_v<版本>_<构建类型>.apk），
+      # 便于在 Actions 下载页 / GitHub Release 中直接区分版本。
+      # push 构建的 versionName = app/version.properties 的 BASE_VERSION。
+      - name: Rename APKs with version
+        run: |
+          BASE_VERSION=$(sed -n 's/^BASE_VERSION=//p' app/version.properties)
+          echo "Renaming APKs to PersonalOvertimeRecord_v${BASE_VERSION}_<buildType>.apk"
+          count=0
+          for f in app/build/outputs/apk/debug/*.apk; do
+            [ -e "$f" ] || continue
+            count=$((count + 1))
+            if [ "$count" = "1" ]; then
+              mv "$f" "app/build/outputs/apk/debug/PersonalOvertimeRecord_v${BASE_VERSION}_debug.apk"
+            else
+              mv "$f" "app/build/outputs/apk/debug/PersonalOvertimeRecord_v${BASE_VERSION}_debug_${count}.apk"
+            fi
+          done
+          count=0
+          for f in app/build/outputs/apk/release/*.apk; do
+            [ -e "$f" ] || continue
+            count=$((count + 1))
+            if [ "$count" = "1" ]; then
+              mv "$f" "app/build/outputs/apk/release/PersonalOvertimeRecord_v${BASE_VERSION}_release.apk"
+            else
+              mv "$f" "app/build/outputs/apk/release/PersonalOvertimeRecord_v${BASE_VERSION}_release_${count}.apk"
+            fi
+          done
+          echo "--- debug ---"; ls -1 app/build/outputs/apk/debug/
+          echo "--- release ---"; ls -1 app/build/outputs/apk/release/
+
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
