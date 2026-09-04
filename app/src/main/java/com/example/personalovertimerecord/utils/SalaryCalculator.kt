@@ -88,12 +88,8 @@ object SalaryCalculator {
         
         val performanceBonus = settings.baseSalary * (settings.performancePercent / 100.0)
         val totalMonthlySalary = settings.baseSalary + performanceBonus
-        val monthlyTotalHours = settings.monthlyWorkDays * settings.dailyWorkHours
-        val hourlyWage = if (monthlyTotalHours > 0) {
-            totalMonthlySalary / monthlyTotalHours
-        } else {
-            0.0
-        }
+        // 统一口径：时薪计算见 OvertimeCalculator.hourlyWage()，避免三处实现漂移
+        val hourlyWage = OvertimeCalculator.hourlyWage(settings)
         
         val normalPay = normalOvertime * hourlyWage * settings.overtimeRateNormal
         val weekendPay = weekendOvertime * hourlyWage * settings.overtimeRateWeekend
@@ -141,14 +137,8 @@ object SalaryCalculator {
             // 与 OvertimeCalculator 保持一致：以登记内容分类（加点→工作日，加班→周末/节假日）
             val dayType = OvertimeCalculator.effectiveDayType(record.date, overtime, extra)
             
-            val performanceBonus = settings.baseSalary * (settings.performancePercent / 100.0)
-            val totalMonthlySalary = settings.baseSalary + performanceBonus
-            val monthlyTotalHours = settings.monthlyWorkDays * settings.dailyWorkHours
-            val hourlyWage = if (monthlyTotalHours > 0) {
-                totalMonthlySalary / monthlyTotalHours
-            } else {
-                0.0
-            }
+            // 统一口径：时薪计算见 OvertimeCalculator.hourlyWage()
+            val hourlyWage = OvertimeCalculator.hourlyWage(settings)
             
             val rate = when (dayType) {
                 DayType.WORKDAY -> settings.overtimeRateNormal

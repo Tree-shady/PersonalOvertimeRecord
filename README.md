@@ -2,7 +2,7 @@
 
 一个功能丰富、稳定可靠的Android应用，用于记录个人的加班信息和计算加班工资。
 
-![Version](https://img.shields.io/badge/version-0.1.5-blue)
+![Version](https://img.shields.io/badge/version-0.1.6-blue)
 ![Min SDK](https://img.shields.io/badge/minSdk-24-green)
 ![Target SDK](https://img.shields.io/badge/targetSdk-36-orange)
 
@@ -10,7 +10,6 @@
 
 ### 核心功能
 - 📅 **日历视图** - 直观的日历界面展示考勤记录
-- ⏰ **打卡功能** - 记录上班/下班时间
 - 💰 **智能计算** - 自动计算加班时长和加班工资
 - 🎯 **登记即分类** - 登记"加点"按正常工作日（1.5x）、登记"加班"按周末/节假日（2x/3x）计算，不再受日历数据限制
 - 📊 **月度统计** - 实时统计当月加班时长、预计工资
@@ -29,8 +28,6 @@
 
 ### 用户体验
 - 🌙 **深色模式** - 支持跟随系统/浅色/深色三种主题
-- 🔔 **打卡提醒** - 可设置上下班打卡提醒
-- 🎮 **科幻启动页** - 炫酷的终端风格开机自检动画
 - ✨ **流畅动画** - 精心设计的过渡动画效果
 - 🔐 **生物识别保护** - 通过中转启动页拦截外部启动，主界面不可被外部应用直接拉起
 
@@ -70,6 +67,7 @@
 | Network | HttpURLConnection | HTTP 客户端（WebDAV 同步） |
 | Chart | MPAndroidChart | 数据可视化（柱状/饼图/折线图） |
 | JSON | Gson | JSON 序列化 |
+| Background | WorkManager | 后台周期任务（自动同步，兼容 Doze） |
 
 ## 项目结构
 
@@ -77,61 +75,61 @@
 app/
 ├── src/main/java/com/example/personalovertimerecord/
 │   ├── adapter/                  # RecyclerView 适配器
+│   │   └── AttendanceAdapter.kt  # 考勤/加班记录列表适配器
 │   ├── data/                     # 数据层
 │   │   ├── db/                   # Room 数据库（DAO、Entity）
+│   │   │   ├── AppDatabase.kt    # 数据库实例与迁移（SQLCipher 加密）
+│   │   │   ├── AttendanceDao.kt  # 数据访问接口
+│   │   │   └── AttendanceEntity.kt # 记录实体
 │   │   ├── OvertimeModels.kt     # 记录/设置/结果模型 + 请假类型（LeaveType）
-│   │   ├── AttendanceStorage.kt  # 旧版 JSON 存储（已迁移至 Room）
-│   │   ├── OvertimeStorage.kt    # 旧版存储（已迁移至 Room）
 │   │   └── SettingsManager.kt    # 设置管理
 │   ├── dialog/                   # 对话框组件
+│   │   ├── AddOvertimeDialog.kt  # 添加/编辑加班（请假）记录对话框
+│   │   └── UpdateDialog.kt       # 软件更新对话框
 │   ├── repository/               # 数据仓库层
+│   │   ├── AttendanceRepository.kt      # 仓储接口
+│   │   └── RoomAttendanceRepository.kt  # Room 实现
 │   ├── utils/                    # 工具类
 │   │   ├── AppLogger.kt          # 日志工具
-│   │   ├── AutoSyncManager.kt    # 自动同步调度
-│   │   ├── AutoSyncReceiver.kt   # 自动同步广播接收器
-│   │   ├── AutoSyncBootReceiver.kt # 开机恢复同步调度
-│   │   ├── ChartHelper.kt        # 图表助手
+│   │   ├── AutoSyncManager.kt    # 自动同步调度（WorkManager）
+│   │   ├── AutoSyncWorker.kt     # 自动同步 Worker
+│   │   ├── BiometricManager.kt   # 生物识别管理
 │   │   ├── ConflictStrategy.kt   # 同步冲突策略
+│   │   ├── Constants.kt          # 常量定义
 │   │   ├── CsvExporter.kt        # CSV 导出
 │   │   ├── CsvImporter.kt        # CSV 导入
 │   │   ├── DataExporter.kt       # 数据导出/恢复/增量合并
-│   │   ├── DataValidator.kt      # 数据验证
 │   │   ├── DatabaseKeyManager.kt # 数据库主密钥管理（Keystore 保护）
 │   │   ├── DateUtils.kt          # 日期工具
 │   │   ├── EncryptionUtils.kt    # AES 加密工具
 │   │   ├── Formatter.kt          # 格式化工具
 │   │   ├── GlobalExceptionHandler.kt # 全局异常处理
 │   │   ├── HolidayManager.kt     # 节假日管理 (2024-2028)
-│   │   ├── InputValidator.kt     # 输入验证
 │   │   ├── NetworkUtils.kt       # 网络状态检查
 │   │   ├── OvertimeCalculator.kt # 加班计算
 │   │   ├── PdfExporter.kt        # PDF 导出
-│   │   ├── PermissionManager.kt  # 权限管理
-│   │   ├── ReminderManager.kt    # 打卡提醒
-│   │   ├── ReminderReceiver.kt   # 打卡提醒广播接收器
-│   │   ├── BiometricManager.kt   # 生物识别管理
 │   │   ├── SalaryCalculator.kt   # 工资计算
 │   │   ├── SecurePreferencesManager.kt # 加密存储
-│   │   ├── SettingsManager.kt    # 设置管理
 │   │   ├── SyncDirection.kt      # 同步方向与预置策略
 │   │   ├── SyncManager.kt        # 同步管理
 │   │   ├── ThemeManager.kt       # 主题管理
-│   │   ├── WebDAVManager.kt      # WebDAV 客户端
 │   │   ├── UpdateManager.kt      # 软件自动更新
-│   │   └── Constants.kt          # 常量定义
+│   │   └── WebDAVManager.kt      # WebDAV 客户端
 │   ├── view/                     # 自定义视图
+│   │   └── CalendarView.kt       # 日历视图
 │   ├── viewmodel/                # ViewModel 层
-│   ├── LauncherActivity.kt       # 中转启动页（生物识别保护入口）
+│   │   └── AttendanceViewModel.kt # 考勤数据 ViewModel
+│   ├── LauncherActivity.kt       # 中转启动页（唯一 exported 入口）
 │   ├── MainActivity.kt           # 主界面
 │   ├── SettingsActivity.kt       # 设置界面
-│   ├── DataManagerActivity.kt    # 数据管理界面
+│   ├── DataManagerActivity.kt    # 数据管理界面（导入/导出/恢复）
 │   ├── ReportActivity.kt         # 报表界面（月度分析）
-│   ├── SplashActivity.kt         # 启动页（科幻风格）
 │   ├── BiometricActivity.kt      # 生物识别解锁
 │   └── OvertimeApplication.kt    # 应用入口
 └── res/
     ├── layout/                   # XML 布局文件
     ├── drawable/                 # 可绘制资源
+    ├── mipmap-*/                 # 应用图标
     ├── values/                   # 默认主题资源
     ├── values-night/             # 深色主题资源
     ├── anim/                     # 动画资源
@@ -189,7 +187,7 @@ distributionUrl=https://repo.huaweicloud.com/gradle/gradle-8.9-bin.zip
 | 两者都未登记 | 按日历自动判定 | 工作日 1.5x / 周末 2.0x / 节假日 3.0x |
 
 > 含义:"**加点**"= 正常工作日延长工时(1.5 倍);"**加班**"= 休息日/节假日上班(2/3 倍)。
-> 下班打卡时应用自动按此登记:工作日超出标准工时的部分记为"加点",周末/节假日全天记为"加班"。
+> 手动登记"加点"或"加班"时即按上表分类计算，无需依赖打卡数据。
 
 #### 日历默认倍率(未登记时兜底)
 
@@ -231,7 +229,7 @@ distributionUrl=https://repo.huaweicloud.com/gradle/gradle-8.9-bin.zip
 - **增量合并** - 变更记录与云端现有数据合并为完整备份后上传，云端数据不丢失
 - **删除同步** - 基于软删除标记（tombstone），删除操作可跨设备同步
 - **加密传输** - 可选 AES-256 加密备份内容，兼容旧版未加密数据
-- **自动同步** - AlarmManager 定时调度（15 分钟 ~ 24 小时可选），设备重启后自动恢复，可仅限 WiFi
+- **自动同步** - WorkManager 周期任务（15 分钟 ~ 24 小时可选），带网络约束（"仅 WiFi" 时 UNMETERED）；任务持久化，设备重启/应用升级后自动恢复，无需开机广播与精确闹钟权限
 - **并发保护** - 全局互斥锁，手动与自动同步不会互相覆盖
 - **覆盖保护** - 下载/解密失败时中止上传，避免本地数据覆盖式冲掉云端备份
 
@@ -252,6 +250,9 @@ distributionUrl=https://repo.huaweicloud.com/gradle/gradle-8.9-bin.zip
 | 工资设置 | 绩效奖金 | 绩效奖金百分比 |
 | 工资设置 | 加班倍率 | 工作日/周末/节假日倍率自定义 |
 | 考勤设置 | 工作时间 | 上下班时间 |
+| 外观设置 | 主题模式 | 跟随系统 / 浅色 / 深色 |
+| 生物识别 | 启动时验证身份 | 指纹/面容解锁保护 |
+| 软件更新 | 检查更新 | 手动检查并安装新版本 |
 | 自动同步 | 同步开关 | 启用/停用后台自动同步 |
 | 自动同步 | 同步间隔 | 15 分钟 ~ 24 小时可选 |
 | 自动同步 | WiFi 限制 | 仅在 WiFi 下自动同步 |
@@ -284,13 +285,18 @@ distributionUrl=https://repo.huaweicloud.com/gradle/gradle-8.9-bin.zip
 
 1. **首次设置**: 首次启动后，进入设置页面配置基本工资、工作时间等
 2. **添加记录**: 点击日历日期添加考勤记录——"加班时长"填休息日/节假日上班的时长（按 2/3 倍计算），"加点时长"填工作日延长工时的时长（按 1.5 倍计算）
-3. **打卡签到**: 输入上班和下班时间，自动计算加班
-4. **查看统计**: 主界面实时显示当月加班统计；报表页面可切换月份查看月度分析
-5. **编辑记录**: 点击列表项编辑已有的考勤记录
-6. **数据导出**: 报表页面可导出 PDF/CSV 报告
-7. **云端同步**: 配置 WebDAV 后可自动同步数据
+3. **查看统计**: 主界面实时显示当月加班统计；报表页面可切换月份查看月度分析
+4. **编辑记录**: 点击列表项编辑已有的考勤记录
+5. **数据导出**: 报表页面可导出 PDF/CSV 报告
+6. **云端同步**: 配置 WebDAV 后可自动同步数据
 
 ## 更新日志
+
+### v0.1.7（未发布）
+- ✂️ 移除"打卡"功能与"打卡提醒"：删除主界面"快捷打卡"（上班打卡/下班打卡）卡片与今日打卡状态、设置页上下班提醒开关，以及 ReminderManager / ReminderWorker 等提醒代码；App 启动时自动清理历史版本遗留的提醒周期任务
+- 🔄 自动同步改为 WorkManager 实现：周期任务 + 网络约束（"仅 WiFi" 时 UNMETERED），兼容 Doze，设备重启/应用升级后自动恢复；移除 AlarmManager、开机广播（BOOT_COMPLETED）与精确闹钟（SCHEDULE_EXACT_ALARM）依赖
+- 🚪 移除科幻风格启动页（SplashActivity），仅保留纯中转的 LauncherActivity 作为唯一 exported 入口
+- 🧹 清理冗余代码与死文件：旧版 JSON 存储（AttendanceStorage/OvertimeStorage）、EditAttendanceDialog、ChartHelper、DataValidator/InputValidator/PermissionManager 等
 
 ### v0.1.6 (2026-08-30)
 - 🏖️ 新增请假/早退登记：支持 10 种请假类型（年假、病假、事假、婚假、产假、陪产假、丧假、工伤假、无薪假、其他），按天登记，与加班记录同表管理

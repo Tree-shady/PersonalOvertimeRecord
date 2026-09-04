@@ -1,25 +1,36 @@
 package com.example.personalovertimerecord.utils
 
-import android.app.AlarmManager
 import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
 import androidx.core.app.NotificationCompat
+import androidx.work.Constraints
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.PeriodicWorkRequest
+import androidx.work.WorkManager
 import com.example.personalovertimerecord.MainActivity
 import com.example.personalovertimerecord.OvertimeApplication
-import com.example.personalovertimerecord.R
 import com.example.personalovertimerecord.data.SettingsManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.util.concurrent.TimeUnit
 
 /**
- * 自动同步管理器
- * 负责管理后台定时同步任务
+ * 自动同步管理器（WorkManager 实现）
+ *
+ * 自动同步注册为一个周期任务（AutoSyncWorker），并带网络约束：
+ * - 仅 WiFi 时使用 NetworkType.UNMETERED，否则 NetworkType.CONNECTED；
+ * - 未连接符合条件网络时 WorkManager 自动等待，不再需要自维护"一次性闹钟链"；
+ * - 周期任务持久化，设备重启/应用升级后自动恢复，无需 BOOT_COMPLETED 广播。
+ *
+ * 对外 API 与旧实现保持一致（isSyncEnabled/setSyncEnabled/setSyncInterval/
+ * setWifiOnly/SYNC_INTERVALS/performSync 手动同步等），设置页无需改动。
  */
 object AutoSyncManager {
 
@@ -30,6 +41,8 @@ object AutoSyncManager {
     private const val KEY_SYNC_ENABLED = "sync_enabled"
     private const val KEY_SYNC_INTERVAL = "sync_interval"
     private const val KEY_AUTO_SYNC_WIFI_ONLY = "wifi_only"
+
+    private const val AUTO_SYNC_UNIQUE_NAME = "auto_sync_work"
 
     // 同步间隔选项（分钟）
     val SYNC_INTERVALS = mapOf(
@@ -43,16 +56,18 @@ object AutoSyncManager {
     )
 
     private lateinit var prefs: android.content.SharedPreferences
+    private lateinit var appContext: Context
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /**
-     * 初始化自动同步管理器
+     * 初始化自动同步管理器（建议在 Application/SettingsActivity 中调用，Worker 内也会调用）
      */
     fun init(context: Context) {
+        appContext = context.applicationContext
         if (!::prefs.isInitialized) {
-            prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         }
-        createNotificationChannel(context)
+        createNotificationChannel(appContext)
     }
 
     /**
@@ -65,7 +80,7 @@ object AutoSyncManager {
                 CHANNEL_NAME,
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "用于显示自动同步状态"
+                description = "用于显示自动同步失败提醒"
                 setShowBadge(false)
             }
 
@@ -75,17 +90,28 @@ object AutoSyncManager {
     }
 
     /**
+     * 获取 SharedPreferences（未初始化时抛异常，提示先调用 init）
+     */
+    private fun requirePrefs(): android.content.SharedPreferences {
+        if (!::prefs.isInitialized) {
+            throw IllegalStateException("AutoSyncManager 未初始化，请先调用 init(context)")
+        }
+        return prefs
+    }
+
+    /**
      * 检查是否启用自动同步
      */
     fun isSyncEnabled(): Boolean {
-        return prefs.getBoolean(KEY_SYNC_ENABLED, false)
+        return requirePrefs().getBoolean(KEY_SYNC_ENABLED, false)
     }
 
     /**
      * 设置是否启用自动同步
      */
     fun setSyncEnabled(context: Context, enabled: Boolean) {
-        prefs.edit().putBoolean(KEY_SYNC_ENABLED, enabled).apply()
+        init(context)
+        requirePrefs().edit().putBoolean(KEY_SYNC_ENABLED, enabled).apply()
 
         if (enabled) {
             scheduleSync(context)
@@ -98,17 +124,18 @@ object AutoSyncManager {
      * 获取同步间隔（分钟）
      */
     fun getSyncInterval(): Int {
-        return prefs.getInt(KEY_SYNC_INTERVAL, 60)
+        return requirePrefs().getInt(KEY_SYNC_INTERVAL, 60)
     }
 
     /**
      * 设置同步间隔
      */
     fun setSyncInterval(context: Context, intervalMinutes: Int) {
-        prefs.edit().putInt(KEY_SYNC_INTERVAL, intervalMinutes).apply()
+        init(context)
+        requirePrefs().edit().putInt(KEY_SYNC_INTERVAL, intervalMinutes).apply()
 
         if (isSyncEnabled()) {
-            // 重新调度同步任务
+            // 重新调度：更新周期任务的时间间隔
             scheduleSync(context)
         }
     }
@@ -117,14 +144,17 @@ object AutoSyncManager {
      * 检查是否仅在WiFi下同步
      */
     fun isWifiOnly(): Boolean {
-        return prefs.getBoolean(KEY_AUTO_SYNC_WIFI_ONLY, true)
+        return requirePrefs().getBoolean(KEY_AUTO_SYNC_WIFI_ONLY, true)
     }
 
     /**
-     * 设置是否仅在WiFi下同步
+     * 设置是否仅在WiFi下同步（改变网络约束，需重新入队周期任务）
      */
     fun setWifiOnly(wifiOnly: Boolean) {
-        prefs.edit().putBoolean(KEY_AUTO_SYNC_WIFI_ONLY, wifiOnly).apply()
+        requirePrefs().edit().putBoolean(KEY_AUTO_SYNC_WIFI_ONLY, wifiOnly).apply()
+        if (isSyncEnabled() && ::appContext.isInitialized) {
+            scheduleSync(appContext)
+        }
     }
 
     /**
@@ -155,165 +185,105 @@ object AutoSyncManager {
     }
 
     /**
-     * 调度自动同步任务
+     * 调度自动同步周期任务（带网络约束；WorkManager 持久化，重启后自动恢复）
      */
     fun scheduleSync(context: Context) {
         if (!isSyncEnabled()) return
 
-        val intervalMinutes = getSyncInterval()
-        val intervalMillis = intervalMinutes * 60 * 1000L
-
-        val intent = Intent(context, AutoSyncReceiver::class.java)
-        val pendingIntent = PendingIntent.getBroadcast(
-            context,
-            0,
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-
-        // Android 12+ 需要用户授权精确闹钟；未授权时退化为普通闹钟
-        val canScheduleExact = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            alarmManager.canScheduleExactAlarms()
+        val intervalMinutes = getSyncInterval().coerceIn(15, 1440)
+        val networkType = if (isWifiOnly()) {
+            NetworkType.UNMETERED
         } else {
-            true
+            NetworkType.CONNECTED
         }
+        val constraints = Constraints.Builder()
+            .setRequiredNetworkType(networkType)
+            .build()
 
-        try {
-            if (canScheduleExact) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    alarmManager.setExactAndAllowWhileIdle(
-                        AlarmManager.RTC_WAKEUP,
-                        System.currentTimeMillis() + intervalMillis,
-                        pendingIntent
-                    )
-                } else {
-                    alarmManager.setExact(
-                        AlarmManager.RTC_WAKEUP,
-                        System.currentTimeMillis() + intervalMillis,
-                        pendingIntent
-                    )
-                }
-            } else {
-                // 无精确闹钟权限，使用普通闹钟
-                alarmManager.set(
-                    AlarmManager.RTC_WAKEUP,
-                    System.currentTimeMillis() + intervalMillis,
-                    pendingIntent
-                )
-            }
-        } catch (e: SecurityException) {
-            // 仍失败时使用普通闹钟兜底
-            alarmManager.set(
-                AlarmManager.RTC_WAKEUP,
-                System.currentTimeMillis() + intervalMillis,
-                pendingIntent
+        val request = PeriodicWorkRequest.Builder(
+            AutoSyncWorker::class.java,
+            intervalMinutes.toLong(),
+            TimeUnit.MINUTES
+        )
+            .setConstraints(constraints)
+            .build()
+
+        WorkManager.getInstance(context.applicationContext)
+            .enqueueUniquePeriodicWork(
+                AUTO_SYNC_UNIQUE_NAME,
+                ExistingPeriodicWorkPolicy.REPLACE,
+                request
             )
-        }
     }
 
     /**
-     * 设备重启后恢复自动同步调度（开机广播触发）
-     */
-    fun rescheduleAfterBoot(context: Context) {
-        init(context)
-        if (isSyncEnabled()) {
-            scheduleSync(context)
-        }
-    }
-
-    /**
-     * 取消自动同步任务
+     * 取消自动同步周期任务
      */
     fun cancelSync(context: Context) {
-        val intent = Intent(context, AutoSyncReceiver::class.java)
-        val pendingIntent = PendingIntent.getBroadcast(
-            context,
-            0,
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        alarmManager.cancel(pendingIntent)
+        WorkManager.getInstance(context.applicationContext)
+            .cancelUniqueWork(AUTO_SYNC_UNIQUE_NAME)
     }
 
     /**
-     * 执行自动同步
-     * 说明：调用方（BroadcastReceiver）应使用 goAsync() 保持进程存活，
-     * 并在 onComplete 回调中调用 finish()。
+     * 手动立即同步一次（设置页"立即同步"按钮）。
+     * 仅执行单次同步，不注册/不修改周期任务。
      */
     fun performSync(context: Context, onComplete: ((Boolean, String) -> Unit)? = null) {
         scope.launch {
             try {
                 init(context)
-                val sm = SettingsManager(context)
-                val webDAVConfig = sm.getWebDAVConfig()
+                val settingsManager = SettingsManager(context)
 
-                if (webDAVConfig == null) {
-                    with(Dispatchers.Main) {
+                if (settingsManager.getWebDAVConfig() == null) {
+                    withContext(Dispatchers.Main) {
                         onComplete?.invoke(false, "未配置WebDAV")
                     }
-                    // 未配置时也要重调度下一次闹钟，否则"单次闹钟链"从此断裂、自动同步永久失效
-                    scheduleSync(context)
                     return@launch
                 }
 
-                // 检查WiFi限制
                 if (isWifiOnly() && !NetworkUtils.isWifiConnected(context)) {
-                    with(Dispatchers.Main) {
+                    withContext(Dispatchers.Main) {
                         onComplete?.invoke(false, "仅在WiFi下同步")
                     }
-                    // 非WiFi时不执行同步，但必须重调度下一次，否则链断裂
-                    scheduleSync(context)
                     return@launch
                 }
 
-                // 执行同步（同步成功时由 SyncManager 统一写入 SettingsManager 的上次同步时间）
                 val database = OvertimeApplication.getDatabase()
-                val syncManager = SyncManager(context, sm, database.attendanceDao())
-
+                val syncManager = SyncManager(context, settingsManager, database.attendanceDao())
                 val result = syncManager.performSync()
+                val success = result == SyncResult.SUCCESS
 
-                val syncSuccess = result == SyncResult.SUCCESS
-
-                with(Dispatchers.Main) {
-                    onComplete?.invoke(syncSuccess, if (syncSuccess) "同步成功" else "同步失败")
+                withContext(Dispatchers.Main) {
+                    onComplete?.invoke(success, if (success) "同步成功" else "同步失败")
                 }
-
-                // 显示通知
-                showSyncNotification(context, syncSuccess)
-
-                // 重新调度下一次同步
-                scheduleSync(context)
-
+                if (!success) {
+                    notifySyncFailure(context)
+                }
             } catch (e: Exception) {
-                with(Dispatchers.Main) {
+                AppLogger.e("AutoSync", "手动同步异常", e)
+                withContext(Dispatchers.Main) {
                     onComplete?.invoke(false, e.message ?: "同步异常")
                 }
-                // 异常时同样重调度下一次，保持闹钟链不断
-                scheduleSync(context)
             }
         }
     }
 
     /**
-     * 显示同步通知
+     * 同步失败提醒（仅失败时调用；成功不打扰）
      */
-    private fun showSyncNotification(context: Context, success: Boolean) {
+    fun notifySyncFailure(context: Context) {
         val intent = Intent(context, MainActivity::class.java)
-        val pendingIntent = PendingIntent.getActivity(
+        val pendingIntent = android.app.PendingIntent.getActivity(
             context,
             0,
             intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
         )
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_popup_sync)
             .setContentTitle("数据同步")
-            .setContentText(if (success) "同步成功" else "同步失败，请检查网络")
+            .setContentText("自动同步失败，请检查网络后重试")
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setAutoCancel(true)
             .setContentIntent(pendingIntent)

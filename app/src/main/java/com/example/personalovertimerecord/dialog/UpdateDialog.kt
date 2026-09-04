@@ -2,6 +2,8 @@ package com.example.personalovertimerecord.dialog
 
 import android.app.Dialog
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.LinearLayout
@@ -10,6 +12,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import com.example.personalovertimerecord.BuildConfig
+import com.example.personalovertimerecord.utils.Constants
 import com.example.personalovertimerecord.utils.UpdateManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -85,6 +88,50 @@ object UpdateDialog {
     }
 
     /**
+     * 调试版 → 正式版迁移引导。
+     * Android 要求覆盖安装必须同签名：调试版（debug 签名）无法被正式签名版直接覆盖，
+     * 只能先卸载调试版（应用数据会被清除），再安装正式版。
+     */
+    private fun showDebugToReleaseMigration(context: Context, info: UpdateManager.UpdateInfo) {
+        AlertDialog.Builder(context)
+            .setTitle("调试版 → 正式版")
+            .setMessage(
+                "当前安装的是调试版本（debug 签名），Android 不允许不同签名直接覆盖升级。\n\n" +
+                    "请先卸载当前调试版（应用数据会被清除），再安装正式版 v${info.versionName}。"
+            )
+            .setPositiveButton("卸载调试版") { _, _ ->
+                uninstallCurrentApp(context)
+            }
+            .setNeutralButton("打开正式版下载页") { _, _ ->
+                openReleasesPage(context)
+            }
+            .setNegativeButton("稍后", null)
+            .show()
+    }
+
+    /** 调起系统卸载器卸载本应用（卸载后进程结束，随后由用户安装正式版） */
+    private fun uninstallCurrentApp(context: Context) {
+        try {
+            val intent = Intent(Intent.ACTION_DELETE, Uri.parse("package:${context.packageName}"))
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            Toast.makeText(context, "无法调起系统卸载，请到系统设置手动卸载", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    /** 在浏览器中打开最新 Release 下载页 */
+    private fun openReleasesPage(context: Context) {
+        try {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(Constants.UPDATE_RELEASES_URL))
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            Toast.makeText(context, "无法打开浏览器，请手动访问最新 Release 页", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    /**
      * 完整更新流程：下载 -> SHA-256 校验 -> 签名校验 -> 调起系统安装器。
      * 需传入 Activity 的 lifecycleScope，页面销毁时协程自动取消。
      */
@@ -126,14 +173,17 @@ object UpdateDialog {
                 }
                 is UpdateManager.SignatureVerifyResult.Mismatch -> {
                     apkFile.delete()
-                    val msg = if (BuildConfig.DEBUG) {
-                        "更新包签名与当前应用不一致，已取消安装。\n" +
-                            "当前安装的是调试版（debug 签名），无法升级为正式签名版；" +
-                            "请先安装正式版再测试更新，或发布与已安装应用同签名的更新包。"
+                    if (BuildConfig.DEBUG) {
+                        // 当前安装的是调试版（本地运行/旧 CI 调试包），更新包为正式签名：
+                        // Android 不允许不同签名覆盖升级，引导先卸载调试版再安装正式版
+                        showDebugToReleaseMigration(context, info)
                     } else {
-                        "更新包签名与当前应用不一致，已取消安装。请确认更新来自官方渠道后重试。"
+                        Toast.makeText(
+                            context,
+                            "更新包签名与当前应用不一致，已取消安装。请确认更新来自官方渠道后重试。",
+                            Toast.LENGTH_LONG
+                        ).show()
                     }
-                    Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
                 }
                 is UpdateManager.SignatureVerifyResult.Unreadable -> {
                     apkFile.delete()

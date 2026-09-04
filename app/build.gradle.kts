@@ -103,6 +103,14 @@ android {
     }
 
     buildTypes {
+        debug {
+            // CI 注入 release 签名环境时，让 debug 包与 release 包使用同一把签名：
+            // 这样已安装的 debug 版可以被 release 版直接覆盖升级（Android 要求同签名才能覆盖安装）。
+            // 本地 Android Studio 运行（无签名环境变量）仍走默认 debug 签名，不受影响。
+            if (hasSigningEnv) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(
@@ -124,6 +132,11 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+}
+
+// Room 导出数据库 schema 到 app/schemas/（随代码提交，供迁移测试与升级校验）
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
 }
 
 // APK 重命名功能已禁用，让 Android Studio 能正确部署
@@ -211,6 +224,9 @@ dependencies {
     implementation("androidx.biometric:biometric-ktx:1.2.0-alpha05")
     
     // WebDAV will use built-in HttpURLConnection
+    
+    // WorkManager - 后台周期任务（自动同步，替代 AlarmManager，兼容 Doze 与重启恢复）
+    implementation("androidx.work:work-runtime-ktx:2.9.1")
     
     // Firebase dependencies - 已禁用云同步
     // implementation(libs.firebase.auth.ktx)

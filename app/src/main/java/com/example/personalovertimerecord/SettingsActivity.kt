@@ -1,6 +1,5 @@
 package com.example.personalovertimerecord
 
-import android.app.TimePickerDialog
 import android.os.Bundle
 import android.view.View
 import android.view.ViewTreeObserver
@@ -18,7 +17,6 @@ import com.example.personalovertimerecord.utils.AppLogger
 import com.example.personalovertimerecord.utils.AutoSyncManager
 import com.example.personalovertimerecord.utils.NetworkUtils
 import com.example.personalovertimerecord.utils.BiometricManager
-import com.example.personalovertimerecord.utils.ReminderManager
 import com.example.personalovertimerecord.utils.ThemeManager
 import com.example.personalovertimerecord.utils.ThemeMode
 import com.example.personalovertimerecord.utils.UpdateManager
@@ -50,12 +48,10 @@ class SettingsActivity : AppCompatActivity() {
         
         // 初始化管理器
         AutoSyncManager.init(this)
-        ReminderManager.init(this)
         
         loadSettings()
         loadWebDAVConfig()
         setupThemeGroup()
-        setupReminder()
         setupBiometric()
         setupAutoSync()
         setupEncryption()
@@ -134,83 +130,6 @@ class SettingsActivity : AppCompatActivity() {
             BiometricManager.setBiometricEnabled(this, isChecked)
             Toast.makeText(this, if (isChecked) "已启用生物识别保护" else "已禁用生物识别保护", Toast.LENGTH_SHORT).show()
         }
-    }
-    
-    private fun setupReminder() {
-        // 上班提醒开关
-        binding.switchWorkReminder.isChecked = ReminderManager.isWorkReminderEnabled()
-        updateWorkReminderVisibility()
-        
-        // 下班提醒开关
-        binding.switchOffWorkReminder.isChecked = ReminderManager.isOffWorkReminderEnabled()
-        updateOffWorkReminderVisibility()
-        
-        // 仅工作日开关
-        binding.switchWorkdaysOnly.isChecked = ReminderManager.isWorkdaysOnly()
-        
-        // 设置时间按钮文字
-        binding.btnWorkReminderTime.text = ReminderManager.getWorkReminderTime()
-        binding.btnOffWorkReminderTime.text = ReminderManager.getOffWorkReminderTime()
-        
-        // 上班提醒开关监听
-        binding.switchWorkReminder.setOnCheckedChangeListener { _, isChecked ->
-            ReminderManager.setWorkReminderEnabled(this, isChecked)
-            updateWorkReminderVisibility()
-            Toast.makeText(this, if (isChecked) "已启用上班提醒" else "已禁用上班提醒", Toast.LENGTH_SHORT).show()
-        }
-        
-        // 下班提醒开关监听
-        binding.switchOffWorkReminder.setOnCheckedChangeListener { _, isChecked ->
-            ReminderManager.setOffWorkReminderEnabled(this, isChecked)
-            updateOffWorkReminderVisibility()
-            Toast.makeText(this, if (isChecked) "已启用下班提醒" else "已禁用下班提醒", Toast.LENGTH_SHORT).show()
-        }
-        
-        // 仅工作日开关监听
-        binding.switchWorkdaysOnly.setOnCheckedChangeListener { _, isChecked ->
-            ReminderManager.setWorkdaysOnly(isChecked)
-        }
-        
-        // 上班提醒时间按钮
-        binding.btnWorkReminderTime.setOnClickListener {
-            showTimePicker(ReminderManager.getWorkReminderTime()) { time ->
-                ReminderManager.setWorkReminderTime(this, time)
-                binding.btnWorkReminderTime.text = time
-            }
-        }
-        
-        // 下班提醒时间按钮
-        binding.btnOffWorkReminderTime.setOnClickListener {
-            showTimePicker(ReminderManager.getOffWorkReminderTime()) { time ->
-                ReminderManager.setOffWorkReminderTime(this, time)
-                binding.btnOffWorkReminderTime.text = time
-            }
-        }
-    }
-    
-    private fun updateWorkReminderVisibility() {
-        binding.workReminderTimeLayout.visibility = if (binding.switchWorkReminder.isChecked) View.VISIBLE else View.GONE
-    }
-    
-    private fun updateOffWorkReminderVisibility() {
-        binding.offWorkReminderTimeLayout.visibility = if (binding.switchOffWorkReminder.isChecked) View.VISIBLE else View.GONE
-    }
-    
-    private fun showTimePicker(currentTime: String, onTimeSelected: (String) -> Unit) {
-        val parts = currentTime.split(":")
-        val hour = parts.getOrNull(0)?.toIntOrNull() ?: 8
-        val minute = parts.getOrNull(1)?.toIntOrNull() ?: 0
-        
-        TimePickerDialog(
-            this,
-            { _, selectedHour, selectedMinute ->
-                val time = String.format("%02d:%02d", selectedHour, selectedMinute)
-                onTimeSelected(time)
-            },
-            hour,
-            minute,
-            true
-        ).show()
     }
     
     private fun setupAutoSync() {

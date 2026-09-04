@@ -18,7 +18,6 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.personalovertimerecord.adapter.AttendanceAdapter
-import com.example.personalovertimerecord.data.DayType
 import com.example.personalovertimerecord.data.OvertimeRecord
 import com.example.personalovertimerecord.data.OvertimeSettings
 import com.example.personalovertimerecord.data.SettingsManager
@@ -30,7 +29,6 @@ import com.example.personalovertimerecord.utils.BiometricManager
 import com.example.personalovertimerecord.utils.Constants
 import com.example.personalovertimerecord.utils.DateUtils
 import com.example.personalovertimerecord.utils.Formatter
-import com.example.personalovertimerecord.utils.HolidayManager
 import com.example.personalovertimerecord.utils.NetworkUtils
 import com.example.personalovertimerecord.utils.OvertimeCalculator
 import com.example.personalovertimerecord.utils.SyncDirection
@@ -78,7 +76,7 @@ class MainActivity : AppCompatActivity() {
     private var startupCheckJob: kotlinx.coroutines.Job? = null
     private val handler = Handler()
 
-    // Android 13+ 通知权限请求（提醒/自动同步通知需要）
+    // Android 13+ 通知权限请求（自动同步失败通知需要）
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { /* 用户选择即可，不强制处理结果 */ }
@@ -230,7 +228,6 @@ class MainActivity : AppCompatActivity() {
             updateMonthlyStats(monthRecords)
             refreshMonthRecords(monthRecords)
         }
-        updateCheckInStatus()
     }
     
     override fun onPause() {
@@ -380,142 +377,6 @@ class MainActivity : AppCompatActivity() {
             showSyncDialog()
         }
         
-        binding.btnCheckIn.setOnClickListener {
-            performCheckIn()
-        }
-        
-        binding.btnCheckOut.setOnClickListener {
-            performCheckOut()
-        }
-    }
-    
-    private fun performCheckIn() {
-        val currentTime = DateUtils.getCurrentTime()
-        val dateStr = DateUtils.formatDate(
-            Calendar.getInstance().get(Calendar.YEAR),
-            Calendar.getInstance().get(Calendar.MONTH),
-            Calendar.getInstance().get(Calendar.DAY_OF_MONTH)
-        )
-        
-        val existingAttendance = viewModel.allAttendance.value?.find { it.date == dateStr }
-        
-        val newAttendance = existingAttendance?.copy(
-            checkInTime = currentTime,
-            checkInTimestamp = System.currentTimeMillis()
-        ) ?: OvertimeRecord(
-            id = 0L,
-            date = dateStr,
-            checkInTime = currentTime,
-            checkInTimestamp = System.currentTimeMillis()
-        )
-        
-        if (existingAttendance != null) {
-            // 已有当日记录：更新同一行（保留原 id），避免重复插入同一日期造成重复数据
-            viewModel.updateAttendance(newAttendance)
-        } else {
-            viewModel.addAttendance(newAttendance)
-        }
-        Toast.makeText(this, "上班打卡成功！时间：$currentTime", Toast.LENGTH_SHORT).show()
-        updateCheckInStatus()
-    }
-    
-    private fun performCheckOut() {
-        val currentTime = DateUtils.getCurrentTime()
-        val dateStr = DateUtils.formatDate(
-            Calendar.getInstance().get(Calendar.YEAR),
-            Calendar.getInstance().get(Calendar.MONTH),
-            Calendar.getInstance().get(Calendar.DAY_OF_MONTH)
-        )
-        
-        val existingAttendance = viewModel.allAttendance.value?.find { it.date == dateStr }
-        
-        if (existingAttendance == null) {
-            Toast.makeText(this, "请先进行上班打卡！", Toast.LENGTH_SHORT).show()
-            return
-        }
-        
-        val checkInTime = existingAttendance.checkInTime
-        val workHours = calculateWorkHours(checkInTime, currentTime)
-        
-        // 与"登记即分类"规则保持一致：
-        // 工作日超出标准工时的部分记为"加点"（1.5倍），
-        // 周末/节假日全天记为"加班"（2倍/3倍）。
-        // 用户已手工填写的加班/加点时长优先，不被自动计算覆盖。
-        val settings = settingsManager.getSettings()
-        val dayType = HolidayManager.getDayType(dateStr)
-        val isWorkday = dayType == DayType.WORKDAY
-        val autoOvertime = if (isWorkday) 0.0 else workHours
-        val autoExtra = if (isWorkday) Math.max(0.0, workHours - settings.dailyWorkHours) else 0.0
-        
-        val finalOvertime = if (existingAttendance.overtimeHours >= 0) {
-            existingAttendance.overtimeHours
-        } else {
-            autoOvertime
-        }
-        val finalExtra = if (existingAttendance.extraHours >= 0) {
-            existingAttendance.extraHours
-        } else {
-            autoExtra
-        }
-        
-        val newAttendance = existingAttendance.copy(
-            checkOutTime = currentTime,
-            checkOutTimestamp = System.currentTimeMillis(),
-            overtimeHours = finalOvertime,
-            extraHours = finalExtra
-        )
-        
-        viewModel.updateAttendance(newAttendance)
-        Toast.makeText(this, "下班打卡成功！时间：$currentTime\n工作时长：${String.format("%.1f", workHours)}小时", Toast.LENGTH_SHORT).show()
-        updateCheckInStatus()
-    }
-    
-    private fun calculateWorkHours(checkInTime: String?, checkOutTime: String?): Double {
-        if (checkInTime == null || checkOutTime == null) return 0.0
-        
-        return try {
-            val checkInParts = checkInTime.split(":").map { it.toInt() }
-            val checkOutParts = checkOutTime.split(":").map { it.toInt() }
-            
-            val checkInMinutes = checkInParts[0] * 60 + checkInParts[1]
-            val checkOutMinutes = checkOutParts[0] * 60 + checkOutParts[1]
-            
-            var diffMinutes = checkOutMinutes - checkInMinutes
-            if (diffMinutes < 0) diffMinutes += 1440 // 跨天处理
-            
-            diffMinutes / 60.0
-        } catch (e: Exception) {
-            0.0
-        }
-    }
-    
-    private fun updateCheckInStatus() {
-        val dateStr = DateUtils.formatDate(
-            Calendar.getInstance().get(Calendar.YEAR),
-            Calendar.getInstance().get(Calendar.MONTH),
-            Calendar.getInstance().get(Calendar.DAY_OF_MONTH)
-        )
-        
-        val todayAttendance = viewModel.allAttendance.value?.find { it.date == dateStr }
-        
-        if (todayAttendance != null) {
-            binding.checkInStatusLayout.visibility = View.VISIBLE
-            val status = StringBuilder()
-            
-            if (todayAttendance.checkInTime != null) {
-                status.append("上班: ${todayAttendance.checkInTime}")
-            }
-            
-            if (todayAttendance.checkOutTime != null) {
-                status.append(" | 下班: ${todayAttendance.checkOutTime}")
-                val workHours = calculateWorkHours(todayAttendance.checkInTime, todayAttendance.checkOutTime)
-                status.append(" | 工时: ${String.format("%.1f", workHours)}h")
-            }
-            
-            binding.tvCheckInStatus.text = status.toString()
-        } else {
-            binding.checkInStatusLayout.visibility = View.GONE
-        }
     }
     
     private fun showSyncDialog() {
@@ -583,7 +444,6 @@ class MainActivity : AppCompatActivity() {
             updateCalendarData()
             updateMonthlyStats(monthRecords)
             updateEmptyState(monthRecords)
-            updateCheckInStatus()
         }
         
         viewModel.errorMessage.observe(this) { errorMsg ->

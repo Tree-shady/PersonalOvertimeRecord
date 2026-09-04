@@ -40,6 +40,9 @@ object Constants {
     // GitHub 的 releases/latest/download/<asset> 会自动指向最新 Release 的资产
     const val UPDATE_MANIFEST_URL = "https://github.com/Tree-shady/PersonalOvertimeRecord/releases/latest/download/latest.json"
     
+    // 最新 Release 页面（供"打开正式版下载页"引导使用）
+    const val UPDATE_RELEASES_URL = "https://github.com/Tree-shady/PersonalOvertimeRecord/releases/latest"
+    
     // 自动检查更新的最小间隔：24 小时
     const val UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000L
 }

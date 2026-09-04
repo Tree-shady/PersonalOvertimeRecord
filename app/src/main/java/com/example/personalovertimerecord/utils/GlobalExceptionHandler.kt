@@ -3,6 +3,11 @@ package com.example.personalovertimerecord.utils
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import com.example.personalovertimerecord.BuildConfig
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
  * 全局异常处理器
@@ -16,8 +21,13 @@ object GlobalExceptionHandler {
     // 主线程Handler，用于安全地处理异常
     internal val mainHandler = Handler(Looper.getMainLooper())
     
-    // 异常回调
+    // 异常回调（遍历时先快照，避免崩溃线程与注册线程并发修改）
     private val exceptionCallbacks = mutableListOf<(Thread, Throwable) -> Unit>()
+
+    // 崩溃日志目录（应用私有目录，最多保留 CRASH_LOG_KEEP 份）
+    private const val CRASH_LOG_DIR = "crash_logs"
+    private const val CRASH_LOG_KEEP = 20
+    private var appContext: Context? = null
 
     /**
      * 初始化全局异常处理器
@@ -25,6 +35,7 @@ object GlobalExceptionHandler {
      */
     fun init(context: Context) {
         if (isInitialized) return
+        appContext = context.applicationContext
         
         // 设置默认的未捕获异常处理器
         val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
@@ -58,13 +69,62 @@ object GlobalExceptionHandler {
         
         AppLogger.e(TAG, errorMessage, throwable)
         
-        // 执行注册的回调
-        exceptionCallbacks.forEach { callback ->
+        // 崩溃堆栈落盘（release 也保留，便于用户反馈定位）
+        writeCrashToFile(thread, throwable)
+        
+        // 执行注册的回调（快照遍历，避免并发修改异常）
+        exceptionCallbacks.toList().forEach { callback ->
             try {
                 callback(thread, throwable)
             } catch (e: Exception) {
                 AppLogger.e(TAG, "Exception in callback", e)
             }
+        }
+    }
+
+    /**
+     * 把崩溃信息写入应用私有目录 crash_logs/ 下（文件名含时间戳，天然按时间排序去重）。
+     * 只记录崩溃本身，不包含业务数据；写失败静默忽略，不影响崩溃流程。
+     */
+    private fun writeCrashToFile(thread: Thread, throwable: Throwable) {
+        val context = appContext ?: return
+        try {
+            val dir = File(context.filesDir, CRASH_LOG_DIR)
+            dir.mkdirs()
+            val now = Date()
+            val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss_SSS", Locale.US).format(now)
+            val displayTime = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(now)
+
+            val content = buildString {
+                append("=== UNCAUGHT EXCEPTION ===\n")
+                append("Time:    ").append(displayTime).append('\n')
+                append("Version: ").append(BuildConfig.VERSION_NAME)
+                    .append(" (").append(BuildConfig.VERSION_CODE).append(")\n")
+                append("Thread:  ").append(thread.name).append('\n')
+                append("Exception: ").append(throwable.javaClass.name).append('\n')
+                append("Message:  ").append(throwable.message).append('\n')
+                append("StackTrace:\n")
+                // 限制长度，避免超大文件
+                throwable.stackTrace.take(60).forEach { append("  at ").append(it).append('\n') }
+                var cause = throwable.cause
+                var depth = 0
+                while (cause != null && depth < 5) {
+                    append("Caused by: ").append(cause).append('\n')
+                    cause.stackTrace.take(40).forEach { append("  at ").append(it).append('\n') }
+                    cause = cause.cause
+                    depth++
+                }
+                append("================================\n")
+            }
+            File(dir, "crash_$timeStamp.log").writeText(content)
+
+            // 保留最近 CRASH_LOG_KEEP 份，防止无限增长
+            dir.listFiles()
+                ?.sortedByDescending { it.lastModified() }
+                ?.drop(CRASH_LOG_KEEP)
+                ?.forEach { it.delete() }
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "写入崩溃日志失败", e)
         }
     }
 

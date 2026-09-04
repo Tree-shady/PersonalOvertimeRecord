@@ -1,6 +1,7 @@
 package com.example.personalovertimerecord
 
 import android.app.Application
+import androidx.work.WorkManager
 import com.example.personalovertimerecord.data.db.AppDatabase
 import com.example.personalovertimerecord.repository.AttendanceRepository
 import com.example.personalovertimerecord.repository.RoomAttendanceRepository
@@ -52,6 +53,10 @@ class OvertimeApplication : Application() {
         // 初始化主题管理器并应用保存的主题
         ThemeManager.init(this)
         ThemeManager.applyTheme()
+
+        // 打卡提醒功能已移除：清理历史版本遗留的 WorkManager 周期提醒任务，防止升级后继续弹通知
+        WorkManager.getInstance(this).cancelUniqueWork("work_reminder_work")
+        WorkManager.getInstance(this).cancelUniqueWork("off_work_reminder_work")
         
         AppLogger.i(TAG, "Application initialized successfully")
     }

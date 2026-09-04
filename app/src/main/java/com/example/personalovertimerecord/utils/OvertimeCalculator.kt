@@ -26,6 +26,21 @@ object OvertimeCalculator {
         }
     }
 
+    /**
+     * 计算小时工资（统一口径，供 OvertimeCalculator / SalaryCalculator 共用，避免口径漂移）：
+     * 时薪 = (基本工资 + 绩效奖金) / (月工作天数 × 每日工时)；分母为 0 时返回 0。
+     */
+    fun hourlyWage(settings: OvertimeSettings): Double {
+        val performanceBonus = settings.baseSalary * (settings.performancePercent / 100.0)
+        val totalMonthlySalary = settings.baseSalary + performanceBonus
+        val monthlyTotalHours = settings.monthlyWorkDays * settings.dailyWorkHours
+        return if (monthlyTotalHours > 0) {
+            totalMonthlySalary / monthlyTotalHours
+        } else {
+            0.0
+        }
+    }
+
     fun calculateOvertime(
         record: OvertimeRecord,
         settings: OvertimeSettings
@@ -89,14 +104,8 @@ object OvertimeCalculator {
         extraHours: Double,
         settings: OvertimeSettings
     ): Double {
-        val performanceBonus = settings.baseSalary * (settings.performancePercent / 100.0)
-        val totalMonthlySalary = settings.baseSalary + performanceBonus
-        val monthlyTotalHours = settings.monthlyWorkDays * settings.dailyWorkHours
-        val hourlyWage = if (monthlyTotalHours > 0) {
-            totalMonthlySalary / monthlyTotalHours
-        } else {
-            0.0
-        }
+        // 统一口径：见 hourlyWage()
+        val hourlyWage = OvertimeCalculator.hourlyWage(settings)
         
         val normalPay = normalOvertime * hourlyWage * settings.overtimeRateNormal
         val weekendPay = weekendOvertime * hourlyWage * settings.overtimeRateWeekend

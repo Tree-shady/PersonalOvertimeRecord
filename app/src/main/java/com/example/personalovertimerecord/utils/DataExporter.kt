@@ -56,8 +56,10 @@ class DataExporter(
     private val dateFormat = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault())
 
     companion object {
-        /** 加密备份文件的内容前缀标记（后接 Base64( salt + iv + AES-CBC 密文 )） */
-        private const val ENC_PREFIX = "PORE_ENC1:"
+        /** 当前导出加密前缀（后接 Base64( AES-256-GCM 密文 )） */
+        private const val ENC_PREFIX = "PORE_ENC2:"
+        /** 历史版本前缀（后接 Base64( salt + iv + AES-CBC 密文 )），仅读取端兼容 */
+        private const val ENC_PREFIX_LEGACY = "PORE_ENC1:"
     }
 
     suspend fun exportData(
@@ -110,15 +112,20 @@ class DataExporter(
             try {
                 context.contentResolver.openInputStream(uri)?.use { inputStream ->
                     val raw = inputStream.readBytes().toString(Charsets.UTF_8)
-                    val json = if (raw.startsWith(ENC_PREFIX)) {
-                        // 加密备份：使用设置的导出加密密码解密
+                    val json = if (raw.startsWith(ENC_PREFIX) || raw.startsWith(ENC_PREFIX_LEGACY)) {
+                        // 加密备份：使用设置的导出加密密码解密（EncryptionUtils 自动识别 GCM/CBC 格式）
                         val settings = SettingsManager(context).getSettings()
                         val password = settings.exportPassword
                         if (password.isBlank()) {
                             throw Exception("备份文件已加密，请在设置中配置导出加密密码后重试")
                         }
                         try {
-                            EncryptionUtils.decryptString(raw.removePrefix(ENC_PREFIX), password)
+                            val encryptedPart = when {
+                                raw.startsWith(ENC_PREFIX) -> raw.removePrefix(ENC_PREFIX)
+                                raw.startsWith(ENC_PREFIX_LEGACY) -> raw.removePrefix(ENC_PREFIX_LEGACY)
+                                else -> raw
+                            }
+                            EncryptionUtils.decryptString(encryptedPart, password)
                         } catch (e: Exception) {
                             throw Exception("备份解密失败：密码错误或文件已损坏")
                         }

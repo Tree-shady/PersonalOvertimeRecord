@@ -13,7 +13,8 @@ import net.sqlcipher.database.SupportFactory
 @Database(
     entities = [AttendanceEntity::class],
     version = 5,
-    exportSchema = false
+    // 导出 schema 供迁移测试与人工审阅；schema JSON 需随代码提交到 app/schemas/
+    exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
 
