@@ -12,7 +12,7 @@ import net.sqlcipher.database.SupportFactory
 
 @Database(
     entities = [AttendanceEntity::class],
-    version = 5,
+    version = 6,
     // 导出 schema 供迁移测试与人工审阅；schema JSON 需随代码提交到 app/schemas/
     exportSchema = true
 )
@@ -60,7 +60,7 @@ abstract class AppDatabase : RoomDatabase() {
                 "overtime_database"
             )
                 .openHelperFactory(factory)
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                 .fallbackToDestructiveMigration()
                 .build()
         }
@@ -71,7 +71,7 @@ abstract class AppDatabase : RoomDatabase() {
                 AppDatabase::class.java,
                 "overtime_database_unencrypted"
             )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                 .fallbackToDestructiveMigration()
                 .build()
         }
@@ -136,6 +136,45 @@ abstract class AppDatabase : RoomDatabase() {
                     """.trimIndent()
                 )
                 // 若此前已创建过非唯一索引则先移除，再创建唯一索引
+                database.execSQL("DROP INDEX IF EXISTS index_attendance_records_date")
+                database.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS index_attendance_records_date ON attendance_records(date)"
+                )
+            }
+        }
+
+        // 从版本5迁移到版本6（仅用于修复历史 schema 漂移，不新增/删除任何列）：
+        //
+        // 背景：v5 时期 date 列的索引存在两种历史形态 —— 曾有一个构建分支以 version = 5
+        // 声明的是「非唯一索引」(Index(value=["date"]))，而合并后的版本声明的是「唯一索引」
+        // (Index(value=["date"], unique=true))，但版本号没有随之递增。于是旧设备上
+        // identity hash 为 7f6c3140... 的 v5 数据库在升级到新构建时触发
+        // “Room cannot verify the data integrity … Expected identity hash b8bd267b…, found 7f6c3140…”。
+        //
+        // 这里不做破坏性重建：先清理同日期重复记录（与 4→5 相同的保留策略），
+        // 再统一重建为实体声明的唯一索引。对已经是唯一索引的健康 v5 库而言该迁移是幂等的空操作，
+        // 数据完整保留；对历史非唯一索引库则就地修复，避免 fallbackToDestructiveMigration 清库。
+        private val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                // 先清理历史重复数据：同一日期只保留一条
+                // （优先保留未删除记录中 id 最大的；若该日期全部已删除则保留 id 最大的墓碑记录）
+                database.execSQL(
+                    """
+                    DELETE FROM attendance_records
+                    WHERE id NOT IN (
+                        SELECT keep_id FROM (
+                            SELECT COALESCE(
+                                (SELECT MAX(id) FROM attendance_records a2
+                                 WHERE a2.date = a1.date AND a2.isDeleted = 0),
+                                (SELECT MAX(id) FROM attendance_records a3
+                                 WHERE a3.date = a1.date)
+                            ) AS keep_id
+                            FROM (SELECT DISTINCT date FROM attendance_records) a1
+                        )
+                    )
+                    """.trimIndent()
+                )
+                // 若此前创建的是非唯一索引则先移除，再创建唯一索引（与实体声明保持一致）
                 database.execSQL("DROP INDEX IF EXISTS index_attendance_records_date")
                 database.execSQL(
                     "CREATE UNIQUE INDEX IF NOT EXISTS index_attendance_records_date ON attendance_records(date)"
