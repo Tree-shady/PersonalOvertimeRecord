@@ -55,7 +55,7 @@ class DataManagerActivity : AppCompatActivity() {
         binding.toolbar.setNavigationOnClickListener { finish() }
         
         val db = AppDatabase.getDatabase(this)
-        dataExporter = DataExporter(this, db.attendanceDao())
+        dataExporter = DataExporter(this, db)
         settingsManager = SettingsManager(this)
         
         setupButtons()

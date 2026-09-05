@@ -32,7 +32,7 @@ class AutoSyncWorker(
 
         return try {
             val database = OvertimeApplication.getDatabase()
-            val syncManager = SyncManager(context, settingsManager, database.attendanceDao())
+            val syncManager = SyncManager(context, settingsManager, database)
             when (syncManager.performSync()) {
                 SyncResult.SUCCESS,
                 SyncResult.NO_CHANGES -> Result.success()

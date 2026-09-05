@@ -20,6 +20,16 @@ var appVersionName = "0.1.4"
 val ciVersionName = project.findProperty("ciVersionName") as String?
 val ciVersionCode = project.findProperty("ciVersionCode") as String?
 
+// 仅在实际产出 APK 的任务（assemble/bundle/install/package）中自动递增构建号；
+// clean/test/lint/编译/IDE 同步等不修改 version.properties，
+// 避免"任何 Gradle 调用都在配置期改写文件"导致的 git 树常脏与增量缓存失效
+val producesArtifact = gradle.startParameter.taskNames.any { taskName ->
+    taskName.contains("assemble", ignoreCase = true) ||
+        taskName.contains("bundle", ignoreCase = true) ||
+        taskName.contains("install", ignoreCase = true) ||
+        taskName.contains("package", ignoreCase = true)
+}
+
 if (!ciVersionName.isNullOrBlank() && !ciVersionCode.isNullOrBlank()) {
     // CI（GitHub Actions）根据 git tag 传入版本号，不修改 version.properties
     appVersionCode = ciVersionCode.toInt()
@@ -32,15 +42,17 @@ if (!ciVersionName.isNullOrBlank() && !ciVersionCode.isNullOrBlank()) {
     val baseVersion = props.getProperty("BASE_VERSION", "0.1.4")
     
     // 递增构建号
-    val newBuildNumber = buildNumber + 1
-    props.setProperty("BUILD_NUMBER", newBuildNumber.toString())
-    versionPropsFile.outputStream().use { props.store(it, "Auto-incremented build number") }
+    val newBuildNumber = if (producesArtifact) buildNumber + 1 else buildNumber
+    if (newBuildNumber != buildNumber) {
+        props.setProperty("BUILD_NUMBER", newBuildNumber.toString())
+        versionPropsFile.outputStream().use { props.store(it, "Auto-incremented build number") }
+    }
     
     appVersionCode = newBuildNumber
     // versionName 只保留三段基础版本号（如 0.1.4），不再追加构建号
     appVersionName = baseVersion
     
-    println("🔢 Version auto-incremented: $appVersionName (build #$appVersionCode)")
+    println("🔢 Version: $appVersionName (build #$appVersionCode)" + if (producesArtifact) "" else "，本次调用不产出 APK，未递增构建号")
 } else {
     // 首次创建版本文件
     val props = Properties()
@@ -201,5 +213,8 @@ dependencies {
     
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
+    androidTestImplementation("androidx.test:core-ktx:1.6.1")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test:rules:1.6.1")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
 }

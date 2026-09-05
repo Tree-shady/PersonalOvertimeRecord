@@ -27,53 +27,52 @@ abstract class AppDatabase : RoomDatabase() {
         private var INSTANCE: AppDatabase? = null
 
         /**
-         * 加密库打开失败并降级到明文库时的原因（null 表示加密库正常工作）。
-         * 供 UI 在启动检查时向用户明示"数据保护已降级"，避免静默无感知。
+         * 加密库初始化失败的原因（null 表示加密库正常工作）。
+         * 注意：应用不再自动降级到明文库——加密初始化失败会直接抛出，
+         * 由 UI 层引导用户处理，避免考勤/工资数据以明文落盘。
          */
         @Volatile
         var encryptionFallbackReason: String? = null
 
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
-                INSTANCE ?: createDatabase(context).also { INSTANCE = it }
+                INSTANCE ?: createEncryptedDatabase(context).also { INSTANCE = it }
             }
         }
-        
-        private fun createDatabase(context: Context): AppDatabase {
+
+        /**
+         * 只允许加密库（fail-closed）：
+         * 历史上这里在加密初始化失败时会回退到明文库 overtime_database_unencrypted，
+         * 一旦触发，全部考勤/工资/请假数据会以明文 SQLite 落盘。
+         * 现改为记录原因并抛出，由界面引导用户处理，任何情况下都不再写明文数据库。
+         */
+        private fun createEncryptedDatabase(context: Context): AppDatabase {
             return try {
                 encryptionFallbackReason = null
-                createEncryptedDatabase(context)
+                val passphrase = DatabaseKeyManager.getDatabaseKey(context)
+                val factory = SupportFactory(passphrase)
+
+                Room.databaseBuilder(
+                    context.applicationContext,
+                    AppDatabase::class.java,
+                    "overtime_database"
+                )
+                    .openHelperFactory(factory)
+                    .addMigrations(*MIGRATIONS)
+                    // 升级缺迁移时不再静默整库删除：仅对降级（通常不会发生）做破坏性处理。
+                    // schema 漂移/缺迁移会让 Room 直接报错，宁可让用户升级失败并反馈，
+                    // 也不能无声清空数年记录。
+                    .fallbackToDestructiveMigrationOnDowngrade()
+                    .build()
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to create encrypted database, falling back to unencrypted", e)
+                Log.e(TAG, "Failed to create encrypted database (no plaintext fallback)", e)
                 encryptionFallbackReason = e.message ?: e.javaClass.simpleName
-                createUnencryptedDatabase(context)
+                throw IllegalStateException(
+                    "数据库加密初始化失败（${encryptionFallbackReason}）。" +
+                        "为避免数据以明文保存，应用已停止启动。请重试；若持续失败，请备份后重新安装。",
+                    e
+                )
             }
-        }
-        
-        private fun createEncryptedDatabase(context: Context): AppDatabase {
-            val passphrase = DatabaseKeyManager.getDatabaseKey(context)
-            val factory = SupportFactory(passphrase)
-            
-            return Room.databaseBuilder(
-                context.applicationContext,
-                AppDatabase::class.java,
-                "overtime_database"
-            )
-                .openHelperFactory(factory)
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
-                .fallbackToDestructiveMigration()
-                .build()
-        }
-        
-        private fun createUnencryptedDatabase(context: Context): AppDatabase {
-            return Room.databaseBuilder(
-                context.applicationContext,
-                AppDatabase::class.java,
-                "overtime_database_unencrypted"
-            )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
-                .fallbackToDestructiveMigration()
-                .build()
         }
         
         // 从版本1迁移到版本2，添加 modifiedAt 字段
@@ -181,5 +180,18 @@ abstract class AppDatabase : RoomDatabase() {
                 )
             }
         }
+
+        /**
+         * 全部迁移（1→2 … 5→6），构建器与迁移测试共用同一份。
+         * 注意：需声明在所有 MIGRATION_x_y 之后。
+         */
+        @JvmField
+        val MIGRATIONS: Array<Migration> = arrayOf(
+            MIGRATION_1_2,
+            MIGRATION_2_3,
+            MIGRATION_3_4,
+            MIGRATION_4_5,
+            MIGRATION_5_6
+        )
     }
 }

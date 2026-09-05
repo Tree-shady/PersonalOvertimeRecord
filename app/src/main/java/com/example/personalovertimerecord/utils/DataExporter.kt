@@ -2,9 +2,10 @@ package com.example.personalovertimerecord.utils
 
 import android.content.Context
 import android.net.Uri
+import androidx.room.withTransaction
 import com.example.personalovertimerecord.data.OvertimeSettings
 import com.example.personalovertimerecord.data.SettingsManager
-import com.example.personalovertimerecord.data.db.AttendanceDao
+import com.example.personalovertimerecord.data.db.AppDatabase
 import com.example.personalovertimerecord.data.db.AttendanceEntity
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
@@ -44,22 +45,30 @@ data class AttendanceEntityBackup(
     val manualExtraHours: Double = -1.0,
     val createdAt: Long = System.currentTimeMillis(),
     val modifiedAt: Long = System.currentTimeMillis(),
+    // 请假字段（备份/同步/恢复必须携带，否则请假记录往返后丢失类型与天数）
+    val isLeave: Boolean = false,
+    val leaveType: String? = null,
+    val leaveHours: Double = 0.0,
     // 软删除标记：true 表示该日期记录已被删除，用于跨设备同步删除
     val isDeleted: Boolean = false
 )
 
 class DataExporter(
     private val context: Context,
-    private val attendanceDao: AttendanceDao
+    private val database: AppDatabase
 ) {
+    private val attendanceDao = database.attendanceDao()
     private val gson = Gson()
-    private val dateFormat = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault())
+    private val dateFormat = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
 
     companion object {
         /** 当前导出加密前缀（后接 Base64( AES-256-GCM 密文 )） */
         private const val ENC_PREFIX = "PORE_ENC2:"
         /** 历史版本前缀（后接 Base64( salt + iv + AES-CBC 密文 )），仅读取端兼容 */
         private const val ENC_PREFIX_LEGACY = "PORE_ENC1:"
+
+        /** 导入/恢复文件大小上限：防止超大/异常文件整读进内存导致 OOM */
+        private const val MAX_IMPORT_FILE_BYTES = 64L * 1024 * 1024
     }
 
     suspend fun exportData(
@@ -111,7 +120,8 @@ class DataExporter(
         withContext(Dispatchers.IO) {
             try {
                 context.contentResolver.openInputStream(uri)?.use { inputStream ->
-                    val raw = inputStream.readBytes().toString(Charsets.UTF_8)
+                    // 限制大小读取，避免超大/恶意备份文件整体读入内存导致 OOM
+                    val raw = inputStream.readCappedUtf8(MAX_IMPORT_FILE_BYTES, "备份文件")
                     val json = if (raw.startsWith(ENC_PREFIX) || raw.startsWith(ENC_PREFIX_LEGACY)) {
                         // 加密备份：使用设置的导出加密密码解密（EncryptionUtils 自动识别 GCM/CBC 格式）
                         val settings = SettingsManager(context).getSettings()
@@ -155,12 +165,18 @@ class DataExporter(
 
     /**
      * 完全替换模式恢复数据
+     *
+     * 恢复前先自校验备份内容（日期非空、无重复），再把「清库 + 逐条插入」整体放进
+     * 数据库事务：任何一步失败都会整体回滚，避免出现"本地已被清空、插入到一半失败"的整库丢失。
      */
     suspend fun restoreDataFull(backupData: BackupData) {
-        withContext(Dispatchers.IO) {
+        val records = backupData.attendanceRecords.map { it.normalized() }
+        validateForFullRestore(records)
+
+        database.withTransaction {
             attendanceDao.deleteAll()
 
-            for (record in backupData.attendanceRecords) {
+            for (record in records) {
                 val entity = toEntity(
                     record = record,
                     id = 0L,
@@ -170,6 +186,40 @@ class DataExporter(
                 attendanceDao.insert(entity)
             }
         }
+    }
+
+    /**
+     * 恢复前自校验：日期非空且在本文件内唯一（数据库 date 列为唯一索引）。
+     * 在删除本地数据之前执行，校验失败直接抛异常，本地数据不受影响。
+     */
+    private fun validateForFullRestore(records: List<AttendanceEntityBackup>) {
+        val seenDates = HashSet<String>(records.size)
+        for (record in records) {
+            if (record.date.isNullOrBlank()) {
+                throw IllegalArgumentException("备份包含缺失日期的记录，已中止恢复以保护现有数据")
+            }
+            if (!seenDates.add(record.date)) {
+                throw IllegalArgumentException("备份包含重复日期：${record.date}，已中止恢复以保护现有数据")
+            }
+        }
+    }
+
+    /**
+     * Gson 通过 Unsafe/反射构造对象时会绕过 Kotlin 非空默认值：
+     * JSON 缺失字段时该字段在运行时可能为 null 或 0（原始类型）。
+     * 这里为逐条记录补齐安全默认值，避免下游 NPE / 时间戳为 0 / 空日期乱插。
+     */
+    private fun AttendanceEntityBackup.normalized(): AttendanceEntityBackup {
+        val created = if (createdAt > 0) createdAt else System.currentTimeMillis()
+        val modified = if (modifiedAt > 0) modifiedAt else created
+        return copy(
+            date = date ?: "",
+            createdAt = created,
+            modifiedAt = modified,
+            manualOvertimeHours = if (manualOvertimeHours.isNaN()) -1.0 else manualOvertimeHours,
+            manualExtraHours = if (manualExtraHours.isNaN()) -1.0 else manualExtraHours,
+            leaveHours = if (leaveHours.isNaN()) 0.0 else leaveHours
+        )
     }
 
     /**
@@ -186,7 +236,8 @@ class DataExporter(
     suspend fun restoreDataIncremental(
         backupData: BackupData,
         conflictStrategy: ConflictStrategy
-    ): SyncSummary = withContext(Dispatchers.IO) {
+    ): SyncSummary = database.withTransaction {
+        val records = backupData.attendanceRecords.map { it.normalized() }
         var added = 0
         var updated = 0
         var deleted = 0
@@ -196,7 +247,13 @@ class DataExporter(
         val localRecords = attendanceDao.getAllRecordsIncludingDeletedSync()
         val localMap = localRecords.associateBy { it.date }
 
-        for (record in backupData.attendanceRecords) {
+        for (record in records) {
+            // 跳过日期缺失的记录，避免空日期写入唯一索引列
+            if (record.date.isBlank()) {
+                skipped++
+                continue
+            }
+
             val localRecord = localMap[record.date]
 
             when {
@@ -218,7 +275,7 @@ class DataExporter(
                     if (record.isDeleted) {
                         val shouldDelete = when (conflictStrategy) {
                             ConflictStrategy.NEWER_WINS ->
-                                record.modifiedAt >= (localRecord.modifiedAt ?: 0L)
+                                record.modifiedAt >= (localRecord.modifiedAt ?: localRecord.createdAt)
                             ConflictStrategy.LOCAL_WINS -> false
                             ConflictStrategy.CLOUD_WINS -> true
                         }
@@ -232,7 +289,7 @@ class DataExporter(
                         // 云端活跃记录
                         val shouldUpdate = when (conflictStrategy) {
                             ConflictStrategy.NEWER_WINS ->
-                                record.modifiedAt > (localRecord.modifiedAt ?: 0L)
+                                record.modifiedAt > (localRecord.modifiedAt ?: localRecord.createdAt)
                             ConflictStrategy.LOCAL_WINS -> false
                             ConflictStrategy.CLOUD_WINS -> true
                         }
@@ -254,7 +311,7 @@ class DataExporter(
         }
 
         SyncSummary(
-            totalRecords = backupData.attendanceRecords.size,
+            totalRecords = records.size,
             added = added,
             updated = updated,
             deleted = deleted,
@@ -332,6 +389,9 @@ class DataExporter(
             manualExtraHours = record.manualExtraHours,
             createdAt = createdAt,
             modifiedAt = record.modifiedAt,
+            isLeave = record.isLeave,
+            leaveType = record.leaveType,
+            leaveHours = record.leaveHours,
             isDeleted = isDeleted
         )
     }
@@ -348,6 +408,9 @@ class DataExporter(
             manualExtraHours = this.manualExtraHours,
             createdAt = this.createdAt,
             modifiedAt = this.modifiedAt ?: this.createdAt,
+            isLeave = this.isLeave,
+            leaveType = this.leaveType,
+            leaveHours = this.leaveHours,
             isDeleted = this.isDeleted
         )
     }
@@ -356,6 +419,25 @@ class DataExporter(
         val timestamp = dateFormat.format(Date())
         return "overtime_backup_$timestamp.json"
     }
+}
+
+/** 限制大小地读取 UTF-8 文本；超过上限抛异常，避免超大文件整读导致 OOM */
+private fun java.io.InputStream.readCappedUtf8(maxBytes: Long, what: String): String {
+    val out = java.io.ByteArrayOutputStream()
+    val buffer = ByteArray(8192)
+    var total = 0L
+    while (true) {
+        val read = read(buffer)
+        if (read == -1) break
+        total += read
+        if (total > maxBytes) {
+            throw IllegalArgumentException(
+                "$what 超过大小上限（${maxBytes / (1024 * 1024)} MB），已中止读取"
+            )
+        }
+        out.write(buffer, 0, read)
+    }
+    return String(out.toByteArray(), Charsets.UTF_8)
 }
 
 /**

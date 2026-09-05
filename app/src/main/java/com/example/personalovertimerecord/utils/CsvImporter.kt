@@ -1,8 +1,6 @@
 package com.example.personalovertimerecord.utils
 
 import android.content.Context
-import com.example.personalovertimerecord.data.LeaveType
-import com.example.personalovertimerecord.data.OvertimeRecord
 import com.example.personalovertimerecord.data.db.AttendanceEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -12,10 +10,11 @@ import java.io.InputStreamReader
 
 /**
  * CSV导入工具类
- * 支持从CSV文件批量导入加班记录
+ * 解析统一走 [CsvCodec]（与导出共用同一套列头/转义/数字契约），
+ * 支持引号包裹字段内的换行（字段内换行的备注不再断行错位）。
  */
 object CsvImporter {
-    
+
     data class ImportResult(
         val success: Boolean,
         val importedCount: Int = 0,
@@ -23,68 +22,81 @@ object CsvImporter {
         val message: String = "",
         val errors: List<String> = emptyList()
     )
-    
+
     /**
      * 从CSV输入流导入数据
+     * 规则：
+     * - 首行必须是有效表头（含“日期/date”列），列序不限；表头兼容旧版“加班时长(小时)”等写法；
+     * - 若首行首列直接是日期，则按无表头简单顺序解析：日期,上班时间,下班时间,加班时长,额外时长,备注；
+     * - 其它文件（如月度汇总报表）会整体中止，避免把非明细行当数据导入。
      */
     suspend fun importFromCsv(context: Context, inputStream: InputStream): ImportResult {
         val errors = mutableListOf<String>()
         var importedCount = 0
         var failedCount = 0
-        
+        var aborted = false
+
         try {
             BufferedReader(InputStreamReader(inputStream)).use { reader ->
-                var lineNumber = 0
                 var headers: List<String>? = null
+                var headerlessMode = false
+                var firstRecord = true
+                var recordIndex = 0
                 val entities = mutableListOf<AttendanceEntity>()
-                
-                var line: String? = reader.readLine()
-                while (line != null) {
-                    lineNumber++
-                    
-                    // 第一行作为表头（剥离 UTF-8 BOM，否则"自己导出的文件"表头匹配失败）
-                    if (lineNumber == 1) {
-                        headers = parseCsvLine(line.removePrefix("\uFEFF"))
-                        if (!validateHeaders(headers)) {
-                            errors.add("第1行：无效的表头格式")
-                        }
-                        line = reader.readLine()
-                        continue
-                    }
-                    
-                    // 跳过空行
-                    if (line.trim().isEmpty()) {
-                        line = reader.readLine()
-                        continue
-                    }
-                    
-                    // 解析数据行
+
+                while (!aborted) {
+                    val raw = readNextCsvRecord(reader) ?: break
+                    if (raw.isBlank()) continue
+
+                    // 首条记录去除 UTF-8 BOM
+                    val line = if (firstRecord) raw.removePrefix("\uFEFF") else raw
+                    firstRecord = false
+                    recordIndex++
+
                     val values = parseCsvLine(line)
-                    
-                    try {
-                        val record = parseRecord(values, headers)
-                        if (record != null) {
-                            // 转换为实体
-                            val entity = AttendanceEntity.fromRecord(record)
-                            entities.add(entity)
-                        } else {
-                            failedCount++
-                            errors.add("第${lineNumber}行：无法解析数据")
+
+                    // 首行决定模式：有效表头 或 无表头（首列是日期）或 无法识别（中止）
+                    if (headers == null && !headerlessMode) {
+                        val normalized = normalizeHeaders(values)
+                        when {
+                            isValidHeader(normalized) -> {
+                                headers = normalized
+                                continue
+                            }
+
+                            isDateLeadingDataRow(values) -> headerlessMode = true
+
+                            else -> {
+                                aborted = true
+                                errors.add(
+                                    "无法识别的文件：首行不是有效表头（需包含“日期/date”列），" +
+                                        "也不是日期开头的数据行。请使用标准 CSV 导出文件或按帮助文案构造。"
+                                )
+                            }
                         }
-                    } catch (e: Exception) {
-                        failedCount++
-                        errors.add("第${lineNumber}行：${e.message}")
                     }
-                    
-                    line = reader.readLine()
+                    if (aborted) break
+
+                    val record = if (headerlessMode) {
+                        parseCsvRecord(values, null)
+                    } else {
+                        parseCsvRecord(values, headers)
+                    }
+
+                    if (record != null) {
+                        entities.add(AttendanceEntity.fromRecord(record))
+                    } else {
+                        failedCount++
+                        errors.add("第${recordIndex}条：日期缺失或格式无法识别，已跳过")
+                    }
                 }
-                
-                // 批量插入数据库（按日期去重：已存在的日期跳过，
-                // 避免插入重复记录破坏"按日期唯一"的同步/查询假设）
-                if (entities.isNotEmpty()) {
+
+                if (!aborted && entities.isNotEmpty()) {
                     val toInsert = withContext(Dispatchers.IO) {
                         val app = context.applicationContext as com.example.personalovertimerecord.OvertimeApplication
                         val attendanceDao = app.database.attendanceDao()
+                        // 按日期去重：跳过库中已存在日期与文件内重复日期，
+                        // 避免插入重复记录破坏"按日期唯一"的同步/查询假设
                         val existingDates = attendanceDao.getAllRecordsSync().map { it.date }.toSet()
                         val seenDates = mutableSetOf<String>()
                         entities.filter { entity ->
@@ -94,8 +106,7 @@ object CsvImporter {
                     if (toInsert.isNotEmpty()) {
                         withContext(Dispatchers.IO) {
                             val app = context.applicationContext as com.example.personalovertimerecord.OvertimeApplication
-                            val attendanceDao = app.database.attendanceDao()
-                            attendanceDao.insertAll(toInsert)
+                            app.database.attendanceDao().insertAll(toInsert)
                         }
                     }
                     importedCount = toInsert.size
@@ -105,14 +116,15 @@ object CsvImporter {
                     }
                 }
             }
-            
-            val success = failedCount == 0
+
+            val success = !aborted && failedCount == 0
             val message = when {
+                aborted -> "导入中止：${errors.firstOrNull() ?: "文件格式无法识别"}"
                 success -> "成功导入 $importedCount 条记录"
                 importedCount > 0 -> "成功导入 $importedCount 条记录，失败 $failedCount 条"
                 else -> "导入失败，没有成功导入任何记录"
             }
-            
+
             return ImportResult(
                 success = success,
                 importedCount = importedCount,
@@ -120,7 +132,6 @@ object CsvImporter {
                 message = message,
                 errors = errors.take(10) // 最多返回10条错误
             )
-            
         } catch (e: Exception) {
             return ImportResult(
                 success = false,
@@ -129,165 +140,42 @@ object CsvImporter {
             )
         }
     }
-    
+
     /**
-     * 解析CSV行（标准状态机：支持引号包裹字段、"" 转义引号；
-     * 之前只翻转 inQuotes 并丢弃引号，导致含引号的备注导出后无法再导入）
+     * 读取一条完整的 CSV 逻辑记录：若当前物理行仍处于未闭合的引号内（如备注字段内含换行），
+     * 继续读取下一物理行并拼接，直到引号闭合或文件结束。
      */
-    private fun parseCsvLine(line: String): List<String> {
-        val values = mutableListOf<String>()
-        val current = StringBuilder()
-        var inQuotes = false
-        var i = 0
-        while (i < line.length) {
-            val c = line[i]
-            when {
-                c == '"' -> {
-                    if (inQuotes && i + 1 < line.length && line[i + 1] == '"') {
-                        // 转义引号 "" → "
-                        current.append('"')
-                        i++
-                    } else {
-                        inQuotes = !inQuotes
-                    }
-                }
-                c == ',' && !inQuotes -> {
-                    values.add(current.toString().trim())
-                    current.setLength(0)
-                }
-                else -> current.append(c)
+    private fun readNextCsvRecord(reader: BufferedReader): String? {
+        val sb = StringBuilder()
+        while (true) {
+            val line = reader.readLine() ?: break
+            if (sb.isEmpty()) {
+                sb.append(line)
+            } else {
+                sb.append('\n').append(line)
             }
-            i++
+            if (csvRecordClosed(sb.toString())) return sb.toString()
         }
-        values.add(current.toString().trim())
-        return values
+        return if (sb.isEmpty()) null else sb.toString()
     }
-    
-    /**
-     * 验证表头
-     */
-    private fun validateHeaders(headers: List<String>): Boolean {
-        val requiredHeaders = setOf("日期", "date", "上班时间", "checkIn", "checkInTime")
-        return headers.any { requiredHeaders.contains(it.lowercase()) }
-    }
-    
-    /**
-     * 解析考勤记录
-     */
-    private fun parseRecord(values: List<String>, headers: List<String>?): OvertimeRecord? {
-        if (values.isEmpty()) return null
-        
-        // 使用表头或默认顺序
-        var date: String? = null
-        var checkInTime: String? = null
-        var checkOutTime: String? = null
-        var overtimeHours: Double? = null
-        var extraHours: Double? = null
-        var note: String? = null
-        var isLeave: Boolean = false
-        var leaveType: String? = null
-        var leaveHours: Double = 0.0
-        
-        if (headers != null) {
-            // 使用表头解析
-            for ((index, header) in headers.withIndex()) {
-                val value = values.getOrNull(index)
-                when (header.lowercase()) {
-                    "日期", "date" -> date = value
-                    "上班时间", "checkin", "checkintime", "starttime" -> checkInTime = value
-                    "下班时间", "checkout", "checkouttime", "endtime" -> checkOutTime = value
-                    "加班时长", "overtime", "overtimehours", "hours" -> overtimeHours = value?.toDoubleOrNull()
-                    "额外时长", "extra", "extrahours" -> extraHours = value?.toDoubleOrNull()
-                    "请假", "isleave", "leave" -> isLeave = value?.toBoolean() ?: false
-                    "请假类型", "leavetype" -> {
-                        val typeStr = value
-                        if (!typeStr.isNullOrBlank()) {
-                            // 尝试通过显示名称或枚举名称匹配
-                            leaveType = LeaveType.entries.find { 
-                                it.displayName == typeStr || it.name == typeStr 
-                            }?.name
-                        }
-                    }
-                    "请假天数", "leavehours" -> leaveHours = value?.toDoubleOrNull() ?: 0.0
-                    "备注", "note", "remark", "comment" -> note = value
-                }
-            }
-        } else {
-            // 使用默认顺序：日期, 上班时间, 下班时间, 加班时长, 额外时长, 请假, 请假类型, 请假天数, 备注
-            date = values.getOrNull(0)
-            checkInTime = values.getOrNull(1)
-            checkOutTime = values.getOrNull(2)
-            overtimeHours = values.getOrNull(3)?.toDoubleOrNull()
-            extraHours = values.getOrNull(4)?.toDoubleOrNull()
-            // 索引5-7为请假相关字段
-            values.getOrNull(5)?.let { if (it.isNotBlank()) isLeave = it.toBoolean() }
-            values.getOrNull(6)?.let { typeStr ->
-                leaveType = LeaveType.entries.find { 
-                    it.displayName == typeStr || it.name == typeStr 
-                }?.name
-            }
-            leaveHours = values.getOrNull(7)?.toDoubleOrNull() ?: 0.0
-            note = values.getOrNull(8)
-        }
-        
-        // 日期是必需的
-        if (date.isNullOrBlank()) return null
-        
-        // 标准化日期格式
-        date = normalizeDate(date)
-        
-        return OvertimeRecord(
-            id = 0L,
-            date = date,
-            checkInTime = checkInTime,
-            checkOutTime = checkOutTime,
-            overtimeHours = overtimeHours ?: -1.0,
-            extraHours = extraHours ?: -1.0,
-            note = note,
-            checkInTimestamp = null,
-            checkOutTimestamp = null,
-            isLeave = isLeave,
-            leaveType = leaveType,
-            leaveHours = leaveHours
-        )
-    }
-    
-    /**
-     * 标准化日期格式为 yyyy-MM-dd
-     */
-    private fun normalizeDate(date: String): String {
-        // 尝试多种日期格式
-        val formats = listOf(
-            Regex("(\\d{4})[-/年](\\d{1,2})[-/月](\\d{1,2})"),
-            Regex("(\\d{4})(\\d{2})(\\d{2})")
-        )
-        
-        for (format in formats) {
-            val match = format.find(date)
-            if (match != null) {
-                val year = match.groupValues[1]
-                val month = match.groupValues[2].padStart(2, '0')
-                val day = match.groupValues[3].padStart(2, '0')
-                return "$year-$month-$day"
-            }
-        }
-        
-        return date
-    }
-    
+
     /**
      * 获取支持的CSV格式说明
      */
     fun getSupportedFormatDescription(): String {
         return """支持的CSV格式：
-- 编码：UTF-8
-- 分隔符：逗号(,)
-- 可选表头：日期, 上班时间, 下班时间, 加班时长, 额外时长, 备注
+- 编码：UTF-8；分隔符：逗号(,)
+- 首行表头（推荐，列序不限，多余列自动忽略）：
+  $CSV_HEADER
+- 请假记录请填写：请假(是/否), 请假类型(年假/病假/…), 请假天数
+- 加班类型/加班费为展示列，导入时忽略（加班费按薪资设置实时计算）
+- 兼容旧版导出表头，如“加班时长(小时)”“加班费(元)”
+- 兼容无表头文件（按列序：日期,上班时间,下班时间,加班时长,额外时长,备注）
 
 示例：
-日期,上班时间,下班时间,加班时长,额外时长,备注
-2024-01-01,09:00,18:00,1.5,0,元旦加班
-2024-01-02,08:30,17:30,0,0,正常上班
+日期,上班时间,下班时间,加班时长,加班类型,加班费,额外时长,请假,请假类型,请假天数,备注
+2024-01-01,09:00,18:00,1.5,平时,28.74,0.0,否,无,0.0,元旦加班
+2024-01-02,无,无,0.0,平时,0.00,0.0,是,年假,8.0,休年假
 
 支持的日期格式：
 - yyyy-MM-dd (推荐)

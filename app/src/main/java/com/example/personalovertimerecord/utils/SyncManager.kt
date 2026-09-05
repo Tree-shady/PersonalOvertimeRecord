@@ -3,6 +3,7 @@ package com.example.personalovertimerecord.utils
 import android.content.Context
 import com.example.personalovertimerecord.data.OvertimeSettings
 import com.example.personalovertimerecord.data.SettingsManager
+import com.example.personalovertimerecord.data.db.AppDatabase
 import com.example.personalovertimerecord.data.db.AttendanceDao
 import com.example.personalovertimerecord.data.db.AttendanceEntity
 import com.google.gson.Gson
@@ -36,7 +37,7 @@ enum class SyncResult {
 class SyncManager(
     private val context: Context,
     private val settingsManager: SettingsManager,
-    private val attendanceDao: AttendanceDao
+    database: AppDatabase
 ) {
 
     companion object {
@@ -49,7 +50,8 @@ class SyncManager(
     }
 
     private val webDAVManager = WebDAVManager(context)
-    private val dataExporter = DataExporter(context, attendanceDao)
+    private val attendanceDao: AttendanceDao = database.attendanceDao()
+    private val dataExporter = DataExporter(context, database)
     private val gson = Gson()
 
     /**
@@ -122,16 +124,28 @@ class SyncManager(
 
             // 如果云端有数据，进行增量对比
             if (cloudContent != null) {
-                try {
-                    val type = object : TypeToken<BackupData>() {}.type
-                    val cloudBackup = (gson.fromJson(cloudContent, type) as? BackupData)?.sanitized()
-                    if (cloudBackup != null) {
-                        cloudRecords = cloudBackup.attendanceRecords
-                        cloudSettings = cloudBackup.settings
-                    }
-                } catch (e: Exception) {
-                    AppLogger.d("解析云端数据失败，将进行全量上传: ${e.message}")
+                // 云端文件能读到内容但不是 JSON（例如被其它设备以同步加密上传的密文）：
+                // 一律中止上传，绝不静默覆盖云端文件
+                if (!isJsonLike(cloudContent)) {
+                    AppLogger.e("云端文件不是有效 JSON（可能已被其它设备用同步加密上传），已中止上传以防覆盖")
+                    return SyncResult.ENCRYPTION_MISMATCH
                 }
+
+                // 云端 JSON 无法解析为备份数据（损坏/格式不符/被外部改写）时同样中止，
+                // 防止“解析失败 → 当云端为空 → 全量上传”把本地数据整包冲掉云端备份
+                val cloudBackup = try {
+                    val type = object : TypeToken<BackupData>() {}.type
+                    (gson.fromJson(cloudContent, type) as? BackupData)?.sanitized()
+                } catch (e: Exception) {
+                    AppLogger.e("解析云端数据失败，已中止上传以防覆盖云端备份", e)
+                    null
+                }
+                if (cloudBackup == null) {
+                    AppLogger.e("云端数据格式无法识别，已中止上传以防覆盖云端备份")
+                    return SyncResult.RESTORE_FAILED
+                }
+                cloudRecords = cloudBackup.attendanceRecords
+                cloudSettings = cloudBackup.settings
             } else {
                 // 无法读到云端数据：只有确认是"文件不存在(404)"才允许全量上传，
                 // 其它失败（网络错误、服务器 5xx 等）一律中止，防止覆盖云端备份
@@ -345,47 +359,27 @@ class SyncManager(
             val cloudBackup: BackupData = (gson.fromJson(cloudContent, type) as? BackupData)
                 ?.sanitized() ?: return SyncResult.RESTORE_FAILED
 
-            // 获取本地完整状态（活记录 + 软删除记录，保证删除操作参与合并）
+            // 获取本地完整状态（活记录 + 软删除记录，保证删除操作参与合并）。
+            // 统一先转成备份记录，再交给纯算法 mergeAttendanceBackups 做合并，
+            // 时间戳兜底口径与 toBackup() 一致（modifiedAt 缺失用 createdAt）
             val localRecords = attendanceDao.getAllRecordsIncludingDeletedSync()
-            val localMap = localRecords.associateBy { it.date }
-
-            // 合并结果
-            val mergedRecords = mutableListOf<AttendanceEntityBackup>()
-
-            // 处理云端记录
-            for (cloudRecord in cloudBackup.attendanceRecords) {
-                val localRecord = localMap[cloudRecord.date]
-
-                when {
-                    // 本地不存在，使用云端（含其删除状态）
-                    localRecord == null -> {
-                        mergedRecords.add(cloudRecord)
-                    }
-
-                    // 都存在，根据策略决定（含删除状态冲突）
-                    else -> {
-                        mergedRecords.add(resolveConflict(localRecord, cloudRecord, options.conflictStrategy))
-                    }
-                }
-            }
-
-            // 处理本地独有的记录（云端没有的，含软删除记录，让云端同步删除）
-            val cloudDates = cloudBackup.attendanceRecords.map { it.date }.toSet()
-            for (localRecord in localRecords) {
-                if (localRecord.date !in cloudDates) {
-                    mergedRecords.add(localRecord.toBackup())
-                }
-            }
+            val localBackups = localRecords.map { it.toBackup() }
+            val mergedRecords = mergeAttendanceBackups(
+                local = localBackups,
+                cloud = cloudBackup.attendanceRecords,
+                strategy = options.conflictStrategy
+            )
 
             // 合并结果上传：settings 按策略决定来源，
             // 避免本地设置的修改在双向同步中永远无法回传云端
             val mergedSettings = if (options.syncSettings) settings else cloudBackup.settings
 
-            // 上传合并结果
+            // 上传合并结果。settings 中的密码字段（@Transient）本就不参与序列化，
+            // 这里再显式剥离一层，与 uploadBackup 的“双保险”口径保持一致
             val mergedBackup = BackupData(
                 version = SYNC_DATA_VERSION,
                 exportTime = System.currentTimeMillis(),
-                settings = mergedSettings,
+                settings = mergedSettings.copy(exportPassword = "", syncPassword = ""),
                 attendanceRecords = mergedRecords
             )
 
@@ -414,25 +408,6 @@ class SyncManager(
     }
 
     /**
-     * 冲突解决：比较本地与云端记录（含删除状态），按策略返回胜者
-     */
-    private fun resolveConflict(
-        local: AttendanceEntity,
-        cloud: AttendanceEntityBackup,
-        strategy: ConflictStrategy
-    ): AttendanceEntityBackup {
-        return when (strategy) {
-            ConflictStrategy.LOCAL_WINS -> local.toBackup()
-            ConflictStrategy.CLOUD_WINS -> cloud
-            ConflictStrategy.NEWER_WINS -> {
-                // 与 toBackup() 一致：旧记录 modifiedAt 可能为 NULL，用 createdAt 兜底
-                val localTime = local.modifiedAt ?: local.createdAt
-                if (cloud.modifiedAt > localTime) cloud else local.toBackup()
-            }
-        }
-    }
-
-    /**
      * 判断下载内容是否为 JSON 格式
      * 加密备份内容为 Base64 文本（非 JSON），据此可区分"未加密数据"与"密码错误的加密数据"
      */
@@ -453,6 +428,9 @@ class SyncManager(
             manualExtraHours = this.manualExtraHours,
             createdAt = this.createdAt,
             modifiedAt = this.modifiedAt ?: this.createdAt,
+            isLeave = this.isLeave,
+            leaveType = this.leaveType,
+            leaveHours = this.leaveHours,
             isDeleted = this.isDeleted
         )
     }

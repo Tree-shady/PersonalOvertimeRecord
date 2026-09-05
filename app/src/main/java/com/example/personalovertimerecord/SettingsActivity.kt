@@ -263,6 +263,10 @@ class SettingsActivity : AppCompatActivity() {
         binding.switchSyncEncryption.setOnCheckedChangeListener { _, isChecked ->
             updateSyncPasswordVisibility()
             Toast.makeText(this, if (isChecked) "已启用同步加密" else "已禁用同步加密", Toast.LENGTH_SHORT).show()
+            // 密码留空时“加密”实际不生效（SyncManager 以密码是否为空为准），及时提醒
+            if (isChecked && binding.etSyncPassword.text?.toString().isNullOrBlank()) {
+                Toast.makeText(this, "请设置同步加密密码；密码留空时等同于未加密", Toast.LENGTH_LONG).show()
+            }
         }
     }
     
@@ -484,9 +488,39 @@ class SettingsActivity : AppCompatActivity() {
             .show()
     }
     
+    /**
+     * 保存 WebDAV 配置。
+     * 首次配置且“同步加密”未生效（开关未开或密码为空）时，弹出安全提醒：
+     * 让用户意识到未加密的数据会以明文上传到第三方服务器。
+     */
     private fun saveWebDAVConfig() {
         val config = getCurrentWebDAVConfig() ?: return
-        
+
+        val isFirstConfig = settingsManager.getWebDAVConfig() == null
+        val syncEncryptionEffective = binding.switchSyncEncryption.isChecked &&
+            !binding.etSyncPassword.text?.toString().isNullOrBlank()
+
+        if (isFirstConfig && !syncEncryptionEffective) {
+            AlertDialog.Builder(this)
+                .setTitle("云端备份未加密")
+                .setMessage(
+                    "即将保存 WebDAV 配置，但当前未开启有效的同步加密。\n\n" +
+                        "未加密时，考勤与工资数据会以明文上传到第三方 WebDAV 服务器" +
+                        "（仅靠 https 和账号密码保护）。\n\n" +
+                        "建议先开启上方的“同步加密”并设置密码，数据将经 AES-256 加密后再上传。"
+                )
+                .setPositiveButton("去开启加密") { _, _ ->
+                    binding.switchSyncEncryption.isChecked = true
+                    binding.etSyncPassword.requestFocus()
+                }
+                .setNegativeButton("仍以明文保存") { _, _ -> doSaveWebDAVConfig(config) }
+                .show()
+        } else {
+            doSaveWebDAVConfig(config)
+        }
+    }
+
+    private fun doSaveWebDAVConfig(config: WebDAVConfig) {
         settingsManager.saveWebDAVConfig(config)
         Toast.makeText(this, "WebDAV配置已保存", Toast.LENGTH_SHORT).show()
     }

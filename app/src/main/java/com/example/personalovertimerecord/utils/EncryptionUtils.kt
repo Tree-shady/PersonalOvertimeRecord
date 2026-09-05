@@ -18,22 +18,36 @@ import javax.crypto.spec.SecretKeySpec
  *   CBC 无认证 + PKCS7 padding oracle 的安全风险；
  * - 每个文件/载荷的 salt 与 IV 均随机生成。
  *
- * 文件格式（新版 GCM，写入端）：
+ * 文件格式（当前 GCM，写入端）：
+ *   magic(2B "G2") + salt(16B) + iv(12B) + AES/GCM/NoPadding 密文(含 16B 认证 tag)
+ *
+ * 历史 GCM 格式（旧版写入端，仅读取端兼容，magic 为 "GM"，PBKDF2 迭代 65536 次）：
  *   magic(2B "GM") + salt(16B) + iv(12B) + AES/GCM/NoPadding 密文(含 16B 认证 tag)
  *
- * 旧版格式（历史 AES-CBC，仅读取端兼容）：
+ * 旧版 CBC 格式（历史 AES-CBC，仅读取端兼容，无 magic 头）：
  *   salt(16B) + iv(16B) + AES/CBC/PKCS7Padding 密文
- * 解密时会根据开头 magic 自动区分两种格式，因此旧的加密备份/云端文件仍可解密。
+ * 解密时会根据开头 magic 自动区分格式并按对应迭代次数派生密钥，
+ * 因此历史加密备份/云端文件仍可解密。
+ *
+ * 说明：新格式使用 "G2" magic 并在解密端按 magic 选择 PBKDF2 迭代次数
+ * （"GM"=65536、"G2"=600000），实现强度升级且保持历史文件可解。
  */
 object EncryptionUtils {
 
     private const val AES_KEY_SIZE = 256
     private const val SALT_SIZE = 16
-    private const val PBKDF2_ITERATIONS = 65536
 
-    // ---- 新版 AES-GCM 参数 ----
-    /** 新格式标识，置于密文最前，用于与无头的旧版 CBC 格式区分 */
-    private val GCM_MAGIC = byteArrayOf(0x47, 0x4D) // "GM"
+    // ---- PBKDF2 迭代次数 ----
+    // OWASP 对 PBKDF2-HmacSHA256 的建议已从 60 万次起跳，旧的 65536 次可被离线暴力破解；
+    // 解密时按 magic 兼容历史迭代次数，避免老文件无法读取。
+    private const val PBKDF2_ITERATIONS_LEGACY = 65536
+    private const val PBKDF2_ITERATIONS = 600_000
+
+    // ---- AES-GCM 参数 ----
+    /** 历史 GCM 标识（PBKDF2 65,536 次），仅用于解密兼容 */
+    private val GCM_MAGIC_LEGACY = byteArrayOf(0x47, 0x4D) // "GM"
+    /** 当前 GCM 标识（PBKDF2 600,000 次），写入端使用 */
+    private val GCM_MAGIC = byteArrayOf(0x47, 0x32) // "G2"
     private const val GCM_IV_LENGTH = 12
     private const val GCM_TAG_LENGTH_BITS = 128
 
@@ -41,7 +55,7 @@ object EncryptionUtils {
     private const val LEGACY_CBC_IV_SIZE = 16
 
     /**
-     * 使用 AES-256-GCM 加密数据
+     * 使用 AES-256-GCM 加密数据（PBKDF2 600,000 次派生密钥）
      * @param data 要加密的数据
      * @param password 加密密码
      * @return 加密后的数据（magic + salt + iv + 密文(含认证 tag)）
@@ -49,7 +63,7 @@ object EncryptionUtils {
     fun encrypt(data: ByteArray, password: String): ByteArray {
         val salt = generateSalt()
         val iv = ByteArray(GCM_IV_LENGTH).also { SecureRandom.getInstanceStrong().nextBytes(it) }
-        val key = deriveKey(password, salt)
+        val key = deriveKey(password, salt, PBKDF2_ITERATIONS)
 
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, key, GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv))
@@ -75,20 +89,27 @@ object EncryptionUtils {
         }
     }
 
-    /** 通过开头 magic 判断是否为新版 GCM 格式 */
+    /** 通过开头 magic 判断是否为新版 GCM 格式（兼容 "G2" 与历史 "GM"） */
     private fun looksLikeGcm(data: ByteArray): Boolean {
         // 长度需至少覆盖 magic + salt + iv + 最小 tag
         if (data.size < GCM_MAGIC.size + SALT_SIZE + GCM_IV_LENGTH + 16) return false
-        return data[0] == GCM_MAGIC[0] && data[1] == GCM_MAGIC[1]
+        return (data[0] == GCM_MAGIC[0] && data[1] == GCM_MAGIC[1]) ||
+            (data[0] == GCM_MAGIC_LEGACY[0] && data[1] == GCM_MAGIC_LEGACY[1])
     }
 
     private fun decryptGcm(data: ByteArray, password: String): ByteArray {
+        // 按 magic 选择 PBKDF2 迭代次数：历史 "GM" 用 65536，当前 "G2" 用 600000
+        val iterations = if (data[0] == GCM_MAGIC_LEGACY[0] && data[1] == GCM_MAGIC_LEGACY[1]) {
+            PBKDF2_ITERATIONS_LEGACY
+        } else {
+            PBKDF2_ITERATIONS
+        }
         var offset = GCM_MAGIC.size
         val salt = data.copyOfRange(offset, offset + SALT_SIZE).also { offset += SALT_SIZE }
         val iv = data.copyOfRange(offset, offset + GCM_IV_LENGTH).also { offset += GCM_IV_LENGTH }
         val body = data.copyOfRange(offset, data.size)
 
-        val key = deriveKey(password, salt)
+        val key = deriveKey(password, salt, iterations)
 
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv))
@@ -96,13 +117,13 @@ object EncryptionUtils {
         return cipher.doFinal(body)
     }
 
-    /** 兼容解密历史 AES-CBC 数据（无 magic 头） */
+    /** 兼容解密历史 AES-CBC 数据（无 magic 头，历史写入时均使用 65,536 次迭代） */
     private fun decryptCbcLegacy(data: ByteArray, password: String): ByteArray {
         val salt = data.copyOfRange(0, SALT_SIZE)
         val iv = data.copyOfRange(SALT_SIZE, SALT_SIZE + LEGACY_CBC_IV_SIZE)
         val body = data.copyOfRange(SALT_SIZE + LEGACY_CBC_IV_SIZE, data.size)
 
-        val key = deriveKey(password, salt)
+        val key = deriveKey(password, salt, PBKDF2_ITERATIONS_LEGACY)
 
         val cipher = Cipher.getInstance("AES/CBC/PKCS7Padding")
         cipher.init(Cipher.DECRYPT_MODE, key, IvParameterSpec(iv))
@@ -120,10 +141,11 @@ object EncryptionUtils {
 
     /**
      * 使用 PBKDF2 从密码派生密钥
+     * @param iterations 迭代次数（解密时按文件格式 magic 选择，加密时使用当前强度）
      */
-    private fun deriveKey(password: String, salt: ByteArray): SecretKeySpec {
+    private fun deriveKey(password: String, salt: ByteArray, iterations: Int): SecretKeySpec {
         val factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
-        val spec = PBEKeySpec(password.toCharArray(), salt, PBKDF2_ITERATIONS, AES_KEY_SIZE)
+        val spec = PBEKeySpec(password.toCharArray(), salt, iterations, AES_KEY_SIZE)
         val keyBytes = factory.generateSecret(spec).encoded
         return SecretKeySpec(keyBytes, "AES")
     }

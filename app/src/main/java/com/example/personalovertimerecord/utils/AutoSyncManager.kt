@@ -249,7 +249,7 @@ object AutoSyncManager {
                 }
 
                 val database = OvertimeApplication.getDatabase()
-                val syncManager = SyncManager(context, settingsManager, database.attendanceDao())
+                val syncManager = SyncManager(context, settingsManager, database)
                 val result = syncManager.performSync()
                 val success = result == SyncResult.SUCCESS
 

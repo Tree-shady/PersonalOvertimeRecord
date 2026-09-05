@@ -25,6 +25,7 @@ import com.example.personalovertimerecord.data.db.AppDatabase
 import com.example.personalovertimerecord.databinding.ActivityMainBinding
 import com.example.personalovertimerecord.dialog.AddOvertimeDialog
 import com.example.personalovertimerecord.dialog.UpdateDialog
+import com.example.personalovertimerecord.utils.AppLogger
 import com.example.personalovertimerecord.utils.BiometricManager
 import com.example.personalovertimerecord.utils.Constants
 import com.example.personalovertimerecord.utils.DateUtils
@@ -99,8 +100,14 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
         
         settingsManager = SettingsManager(this)
-        val database = AppDatabase.getDatabase(this)
-        syncManager = SyncManager(this, settingsManager, database.attendanceDao())
+        val database = try {
+            AppDatabase.getDatabase(this)
+        } catch (e: Exception) {
+            AppLogger.e("MainActivity", "数据库初始化失败，已停止启动（防止明文降级）", e)
+            showDatabaseInitError(e)
+            return
+        }
+        syncManager = SyncManager(this, settingsManager, database)
         
         requestNotificationPermissionIfNeeded()
         
@@ -260,6 +267,24 @@ class MainActivity : AppCompatActivity() {
     private fun stopTimeUpdates() {
         timeUpdateJob?.cancel()
         timeUpdateJob = null
+    }
+
+    /**
+     * 数据库加密初始化失败时的引导对话框。
+     * 不提供“忽略并继续”，避免以明文/无加密方式运行导致隐私数据落盘。
+     */
+    private fun showDatabaseInitError(e: Exception) {
+        val reason = AppDatabase.encryptionFallbackReason ?: e.message ?: "未知错误"
+        AlertDialog.Builder(this)
+            .setTitle("数据库初始化失败")
+            .setMessage(
+                "无法以加密方式打开考勤数据库（$reason）。\n\n" +
+                    "为避免记录以明文保存，应用将退出。请稍后重试；" +
+                    "若持续失败，请先在旧版本中导出备份，再重新安装应用。"
+            )
+            .setCancelable(false)
+            .setPositiveButton("退出") { _, _ -> finish() }
+            .show()
     }
     
     private fun setupCalendar() {

@@ -24,7 +24,9 @@ object GlobalExceptionHandler {
     // 异常回调（遍历时先快照，避免崩溃线程与注册线程并发修改）
     private val exceptionCallbacks = mutableListOf<(Thread, Throwable) -> Unit>()
 
-    // 崩溃日志目录（应用私有目录，最多保留 CRASH_LOG_KEEP 份）
+    // 崩溃日志目录（应用缓存目录，最多保留 CRASH_LOG_KEEP 份）
+    // 使用 cacheDir 而非 filesDir：缓存目录默认不参与系统备份，
+    // 避免崩溃日志（可能含 URL/路径等上下文）随 adb backup / 云备份外泄
     private const val CRASH_LOG_DIR = "crash_logs"
     private const val CRASH_LOG_KEEP = 20
     private var appContext: Context? = null
@@ -83,13 +85,15 @@ object GlobalExceptionHandler {
     }
 
     /**
-     * 把崩溃信息写入应用私有目录 crash_logs/ 下（文件名含时间戳，天然按时间排序去重）。
+     * 把崩溃信息写入应用缓存目录 crash_logs/ 下（文件名含时间戳，天然按时间排序去重；
+     * 缓存目录不参与系统备份，防止日志外泄）。
      * 只记录崩溃本身，不包含业务数据；写失败静默忽略，不影响崩溃流程。
      */
     private fun writeCrashToFile(thread: Thread, throwable: Throwable) {
         val context = appContext ?: return
         try {
-            val dir = File(context.filesDir, CRASH_LOG_DIR)
+            // 缓存目录：系统备份不会包含该目录内容
+            val dir = File(context.cacheDir, CRASH_LOG_DIR)
             dir.mkdirs()
             val now = Date()
             val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss_SSS", Locale.US).format(now)
