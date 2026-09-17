@@ -25,8 +25,9 @@ data class WebDAVConfig(
  * 负责与 WebDAV 服务器通信，支持文件上传、下载、连接测试等
  *
  * 重定向安全说明：本客户端关闭了系统级自动跳转（instanceFollowRedirects=false），
- * 只手动跟随“https 且主机/端口不变”的同源跳转；跨源跳转一律拒绝并当作请求失败处理。
- * 这样 Basic 认证凭据只会发送给用户在设置中配置的那一台服务器，不会被转发到第三方主机。
+ * 只跟随 https 跳转（https→http 降级一律拒绝）。
+ * Basic 认证凭据只发送给与原始请求同注册域的主机：同域跳转带凭据，跨注册域跳转
+ * （如 123 云盘 GET 文件跳转自有 CDN 节点）跟随后匿名访问，凭据不会被转发到第三方主机。
  */
 class WebDAVManager(private val context: Context) {
 
@@ -45,6 +46,13 @@ class WebDAVManager(private val context: Context) {
         /** 需要处理的 HTTP 重定向状态码 */
         private val REDIRECT_STATUS_CODES = setOf(301, 302, 303, 307, 308)
 
+        /** 常见两段式公共后缀（此类域名注册域需取最后三段） */
+        private val TWO_LEVEL_PUBLIC_SUFFIXES = setOf(
+            "com.cn", "net.cn", "org.cn", "gov.cn", "edu.cn", "ac.cn",
+            "com.hk", "com.tw", "com.jp", "co.jp", "com.sg", "com.au", "com.br",
+            "co.uk", "org.uk", "net.au"
+        )
+
         var lastResponseCode: Int = 0
     }
 
@@ -58,6 +66,11 @@ class WebDAVManager(private val context: Context) {
             val testFileUrl = buildUrl(config.serverUrl, config.remotePath, ".test_connection")
 
             AppLogger.d("WebDAV 测试连接: $testFileUrl")
+
+            // 先确保目录存在（与 uploadFile 行为一致）：
+            // 首次同步或更换远程路径时，云端目录尚未创建，直接 PUT 测试文件会因
+            // 父目录不存在被服务器拒绝（409/404），导致配置正确也提示连接失败
+            ensureDirectoryExists(config)
 
             val success = executeRequest(
                 url = testFileUrl,
@@ -279,9 +292,9 @@ class WebDAVManager(private val context: Context) {
      *
      * 重定向策略：
      * - 关闭系统级自动跳转，改为手动处理；
-     * - 仅当 Location 指向“https 且主机/端口与原请求一致”时才继续（最多 [MAX_REDIRECTS] 次）；
-     * - 跨源（含 https→http 降级）跳转直接拒绝，把 3xx 原样交给 [handleResponse]，
-     *   由调用方按“非 2xx”处理——保证 Authorization 凭据永远不会发给第三方主机。
+     * - 仅跟随 https 跳转（最多 [MAX_REDIRECTS] 次），https→http 降级一律拒绝；
+     * - Basic 凭据只发送给与原始请求同注册域的主机：同域跳转（如 123 云盘公共域名 → 专属节点）带凭据，
+     *   跨注册域跳转（如 123 云盘 GET 文件 → 自有 CDN 节点）跟随后匿名访问（CDN 跳转 URL 自带签名）。
      */
     private inline fun <T> executeRequest(
         url: String,
@@ -300,7 +313,12 @@ class WebDAVManager(private val context: Context) {
             try {
                 connection = URL(currentUrl).openConnection() as HttpURLConnection
                 connection.requestMethod = method
-                connection.setRequestProperty("Authorization", getBasicAuth(config.username, config.password))
+                // Basic 凭据只发送给与原始请求同注册域的主机：
+                // 123 云盘等会把 GET 文件请求 302 到自有 CDN 节点（跨注册域），
+                // 跟随但不带凭据（CDN 跳转 URL 通常自带签名），避免凭据泄露给第三方主机
+                if (isSameTrustedOrigin(originalUrl, URL(currentUrl))) {
+                    connection.setRequestProperty("Authorization", getBasicAuth(config.username, config.password))
+                }
                 connection.setRequestProperty("User-Agent", "Android-WebDAV-Client/1.0")
                 connection.connectTimeout = CONNECTION_TIMEOUT_MS
                 connection.readTimeout = READ_TIMEOUT_MS
@@ -321,13 +339,14 @@ class WebDAVManager(private val context: Context) {
                     val location = connection.getHeaderField("Location")
                     if (!location.isNullOrBlank()) {
                         val next = URL(URL(currentUrl), location)
-                        if (isSameOrigin(originalUrl, next)) {
+                        // 仅跟随 https 跳转（同域带凭据、跨域匿名，见上方 Authorization 逻辑）；
+                        // https→http 降级拒绝，把 3xx 交回调用方按失败处理
+                        if (next.protocol == "https") {
                             redirectCount++
                             currentUrl = next.toExternalForm()
                             continue
                         }
-                        // 跨源跳转：拒绝跟随，把 3xx 交回调用方按失败处理
-                        AppLogger.w("WebDAV", "拒绝跨源重定向（$responseCode → ${next.protocol}://${next.host}），已中止以保护凭据")
+                        AppLogger.w("WebDAV", "拒绝非 https 重定向（$responseCode → ${next.protocol}://${next.host}），已中止以保护凭据")
                     }
                 }
 
@@ -340,13 +359,31 @@ class WebDAVManager(private val context: Context) {
     }
 
     /**
-     * 是否为同源（仅允许 https，且协议/主机/端口完全一致）。
-     * 用于限制重定向跟随，防止 Basic 凭据被转发到其它主机或降级到明文 HTTP。
+     * 是否允许跟随该重定向（https 且注册域一致）。
+     * 123 云盘等服务的公共域名会重定向到用户专属节点
+     * （如 webdav.123pan.cn → webdav-xxx.pd1.123pan.cn），主机不同但属于同一注册域（123pan.cn），
+     * 凭据发送给同一服务商域内主机是安全的；
+     * 跨注册域（含 https→http 降级）一律拒绝，防止 Basic 凭据被转发到第三方主机。
      */
-    private fun isSameOrigin(a: URL, b: URL): Boolean {
+    private fun isSameTrustedOrigin(a: URL, b: URL): Boolean {
         if (a.protocol != "https" || b.protocol != "https") return false
-        if (!a.host.equals(b.host, ignoreCase = true)) return false
-        return effectivePort(a) == effectivePort(b)
+        if (effectivePort(a) != effectivePort(b)) return false
+        return registeredDomain(a.host) == registeredDomain(b.host)
+    }
+
+    /**
+     * 提取注册域（eTLD+1）的简化实现：
+     * 覆盖常见多级公共后缀（com.cn 等）与普通两段域名，够 123 云盘/坚果云等场景使用。
+     */
+    private fun registeredDomain(host: String): String {
+        val labels = host.lowercase().split(".")
+        if (labels.size <= 2) return host.lowercase()
+        val lastTwo = labels.takeLast(2).joinToString(".")
+        return if (lastTwo in TWO_LEVEL_PUBLIC_SUFFIXES) {
+            labels.takeLast(3).joinToString(".")
+        } else {
+            labels.takeLast(2).joinToString(".")
+        }
     }
 
     private fun effectivePort(url: URL): Int {
