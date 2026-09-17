@@ -36,6 +36,7 @@ import com.example.personalovertimerecord.utils.SyncDirection
 import com.example.personalovertimerecord.utils.SyncManager
 import com.example.personalovertimerecord.utils.SyncOptions
 import com.example.personalovertimerecord.utils.SyncPresets
+import com.example.personalovertimerecord.utils.WebDAVManager
 import com.example.personalovertimerecord.utils.SyncResult
 import com.example.personalovertimerecord.utils.UpdateManager
 import com.example.personalovertimerecord.view.CalendarView
@@ -454,9 +455,9 @@ class MainActivity : AppCompatActivity() {
                 SyncResult.SUCCESS -> "同步成功！"
                 SyncResult.NO_CONFIG -> "请先在设置中配置 WebDAV"
                 SyncResult.NO_NETWORK -> "网络不可用，请检查网络连接"
-                SyncResult.CONNECTION_FAILED -> "连接失败，请检查网络和配置"
+                SyncResult.CONNECTION_FAILED -> "连接失败（服务器响应码 ${WebDAVManager.lastResponseCode}），请检查网络和配置"
                 SyncResult.UPLOAD_FAILED -> "上传失败"
-                SyncResult.DOWNLOAD_FAILED -> "下载失败"
+                SyncResult.DOWNLOAD_FAILED -> "下载失败（服务器响应码 ${WebDAVManager.lastResponseCode}）"
                 SyncResult.RESTORE_FAILED -> "恢复数据失败"
                 SyncResult.NO_CHANGES -> "没有需要同步的更改"
                 SyncResult.CONFLICT -> "存在数据冲突，请手动处理"

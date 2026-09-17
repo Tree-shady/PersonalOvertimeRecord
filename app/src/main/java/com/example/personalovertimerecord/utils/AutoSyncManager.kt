@@ -251,10 +251,25 @@ object AutoSyncManager {
                 val database = OvertimeApplication.getDatabase()
                 val syncManager = SyncManager(context, settingsManager, database)
                 val result = syncManager.performSync()
-                val success = result == SyncResult.SUCCESS
+                // NO_CHANGES 表示“本地没有需要同步的更改”，属于正常完成，不应提示失败
+                val success = result == SyncResult.SUCCESS || result == SyncResult.NO_CHANGES
+
+                // 失败时给出具体原因（含服务器响应码），避免只显示笼统的“同步失败”
+                val message = when (result) {
+                    SyncResult.SUCCESS -> "同步成功"
+                    SyncResult.NO_CHANGES -> "没有需要同步的更改"
+                    SyncResult.NO_CONFIG -> "未配置WebDAV"
+                    SyncResult.NO_NETWORK -> "网络不可用，请检查网络连接"
+                    SyncResult.CONNECTION_FAILED -> "连接失败（服务器响应码 ${WebDAVManager.lastResponseCode}），请检查网络和配置"
+                    SyncResult.UPLOAD_FAILED -> "上传失败"
+                    SyncResult.DOWNLOAD_FAILED -> "下载失败（服务器响应码 ${WebDAVManager.lastResponseCode}）"
+                    SyncResult.RESTORE_FAILED -> "恢复数据失败"
+                    SyncResult.CONFLICT -> "存在数据冲突，请手动处理"
+                    SyncResult.ENCRYPTION_MISMATCH -> "云端数据已加密，请检查同步加密密码是否与上传设备一致"
+                }
 
                 withContext(Dispatchers.Main) {
-                    onComplete?.invoke(success, if (success) "同步成功" else "同步失败")
+                    onComplete?.invoke(success, message)
                 }
                 if (!success) {
                     notifySyncFailure(context)
