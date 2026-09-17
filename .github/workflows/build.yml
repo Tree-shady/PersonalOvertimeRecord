@@ -28,8 +28,14 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      # GitHub Ubuntu runner 已预装 Android SDK（ANDROID_HOME=/usr/local/lib/android/sdk），
+      # 无需 android-actions/setup-android：其 v3 默认尝试安装已被 Google 下架的 tools 包，
+      # 导致 sdkmanager 报 "Failed to find package 'tools'" 使 CI 失败
+      - name: Verify preinstalled Android SDK
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          ls "$ANDROID_HOME/platforms" | tail -5
+          ls "$ANDROID_HOME/build-tools" | tail -5
 
       # 自动缓存 ~/.gradle 与构建缓存，第二次起构建只需 1~2 分钟
       - name: Set up Gradle
