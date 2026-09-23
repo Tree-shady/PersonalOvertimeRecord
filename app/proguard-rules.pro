@@ -36,10 +36,28 @@
 # EncryptedSharedPreferences
 -keep class androidx.security.crypto.** { *; }
 
+# Tink（security-crypto 底层库）引用了 Android 运行时不存在的 JSR-305 注解，仅是编译期引用，可安全忽略
+-dontwarn javax.annotation.Nullable
+-dontwarn javax.annotation.concurrent.GuardedBy
+
 # Keep data classes for JSON serialization
 -keepclassmembers class * {
     @com.google.gson.annotations.SerializedName <fields>;
 }
+
+# Gson 反射支持：TypeToken 泛型解析与 JSON 字段名映射
+# （BackupData/AttendanceEntityBackup/UpdateInfo 位于 utils 包，字段名即 JSON key，
+#   混淆会破坏备份文件格式兼容性，必须保留）
+-keep class com.example.personalovertimerecord.utils.BackupData { *; }
+-keep class com.example.personalovertimerecord.utils.AttendanceEntityBackup { *; }
+-keep class com.example.personalovertimerecord.utils.UpdateManager$UpdateInfo { *; }
+-keep class com.google.gson.reflect.TypeToken { *; }
+-keep class * extends com.google.gson.reflect.TypeToken
+-keepattributes Signature
+
+# 保留行号便于崩溃日志（GlobalExceptionHandler）还原定位
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile
 
 # Keep Kotlin Metadata
 -keepattributes *Annotation*

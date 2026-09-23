@@ -23,9 +23,19 @@
     
     <!-- Status Bar -->
     <color name="status_bar">#FF000000</color>
-    
+
     <!-- Terminal Style Colors (Keep for Splash) -->
     <color name="terminal_background">#FF000000</color>
     <color name="terminal_green">#FF00FF00</color>
     <color name="terminal_dim">#FF008800</color>
+
+    <!-- 状态卡片（系统检查结果）：暗色主题使用深色容器 + 浅色前景 -->
+    <color name="status_success_container">#FF1E3323</color>
+    <color name="status_success_on_container">#FF81C784</color>
+    <color name="status_error_container">#FF3A1D1D</color>
+    <color name="status_error_on_container">#FFEF9A9A</color>
+
+    <!-- 考勤列表时长文字：暗色主题使用提亮色阶 -->
+    <color name="leave_hours_color">#FFFFB74D</color>
+    <color name="overtime_hours_color">#FF64B5F6</color>
 </resources>

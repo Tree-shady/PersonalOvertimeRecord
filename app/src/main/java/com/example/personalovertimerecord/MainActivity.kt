@@ -186,31 +186,18 @@ class MainActivity : AppCompatActivity() {
             
             try {
                 // 检查1: 数据库完整性
-                tvStatus.text = "检查数据库..."
                 val database = AppDatabase.getDatabase(this@MainActivity)
                 database.attendanceDao().getAllRecordsSync() // 使用正确的方法名
                 // 加密库降级为明文库时向用户明示，避免数据保护被静默关闭
                 AppDatabase.encryptionFallbackReason?.let { reason ->
                     errors.add("数据库加密不可用（$reason），数据保护已降级")
                 }
-                delay(200)
-                
+
                 // 检查2: 设置加载
-                tvStatus.text = "加载设置..."
                 val settings = settingsManager.getSettings()
                 if (settings.baseSalary <= 0) {
                     errors.add("基本工资未设置")
                 }
-                delay(200)
-                
-                // 检查3: 存储空间
-                tvStatus.text = "检查存储..."
-                delay(200)
-                
-                // 检查4: 权限
-                tvStatus.text = "检查权限..."
-                delay(200)
-                
             } catch (e: Exception) {
                 errors.add("检查失败: ${e.message}")
             }
@@ -219,15 +206,15 @@ class MainActivity : AppCompatActivity() {
             statusProgress.visibility = View.GONE
             if (errors.isEmpty()) {
                 tvStatus.text = "系统就绪"
-                statusCard.setCardBackgroundColor(0xFFE8F5E9.toInt()) // 浅绿色
-                tvStatus.setTextColor(0xFF2E7D32.toInt())
+                statusCard.setCardBackgroundColor(ContextCompat.getColor(this@MainActivity, R.color.status_success_container))
+                tvStatus.setTextColor(ContextCompat.getColor(this@MainActivity, R.color.status_success_on_container))
                 handler.postDelayed({
                     statusCard.visibility = View.GONE
                 }, 2000)
             } else {
                 tvStatus.text = errors.joinToString("; ")
-                statusCard.setCardBackgroundColor(0xFFFFEBEE.toInt()) // 浅红色
-                tvStatus.setTextColor(0xFFC62828.toInt())
+                statusCard.setCardBackgroundColor(ContextCompat.getColor(this@MainActivity, R.color.status_error_container))
+                tvStatus.setTextColor(ContextCompat.getColor(this@MainActivity, R.color.status_error_on_container))
             }
         }
     }

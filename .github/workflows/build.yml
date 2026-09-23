@@ -62,19 +62,21 @@ jobs:
 
       # 把 APK 重命名为带版本号的名字（PersonalOvertimeRecord_v<版本>_<构建类型>.apk），
       # 便于在 Actions 下载页 / GitHub Release 中直接区分版本。
-      # push 构建的 versionName = app/version.properties 的 BASE_VERSION。
+      # 版本号从 APK 文件名提取（由 build.gradle.kts 按 appVersionName 生成），
+      # 不依赖 app/version.properties（该文件已移出版本控制，本机自增构建号）。
       - name: Rename APKs with version
         run: |
-          BASE_VERSION=$(sed -n 's/^BASE_VERSION=//p' app/version.properties)
-          echo "Renaming APKs to PersonalOvertimeRecord_v${BASE_VERSION}_<buildType>.apk"
+          FIRST_APK=$(find app/build/outputs/apk/debug -name '*.apk' | head -1)
+          VERSION=$(basename "$FIRST_APK" | sed -E 's/^PersonalOvertimeRecord_v([0-9.]+)_[0-9]+_debug\.apk$/\1/')
+          echo "Renaming APKs to PersonalOvertimeRecord_v${VERSION}_<buildType>.apk"
           count=0
           for f in app/build/outputs/apk/debug/*.apk; do
             [ -e "$f" ] || continue
             count=$((count + 1))
             if [ "$count" = "1" ]; then
-              mv "$f" "app/build/outputs/apk/debug/PersonalOvertimeRecord_v${BASE_VERSION}_debug.apk"
+              mv "$f" "app/build/outputs/apk/debug/PersonalOvertimeRecord_v${VERSION}_debug.apk"
             else
-              mv "$f" "app/build/outputs/apk/debug/PersonalOvertimeRecord_v${BASE_VERSION}_debug_${count}.apk"
+              mv "$f" "app/build/outputs/apk/debug/PersonalOvertimeRecord_v${VERSION}_debug_${count}.apk"
             fi
           done
           count=0
@@ -82,9 +84,9 @@ jobs:
             [ -e "$f" ] || continue
             count=$((count + 1))
             if [ "$count" = "1" ]; then
-              mv "$f" "app/build/outputs/apk/release/PersonalOvertimeRecord_v${BASE_VERSION}_release.apk"
+              mv "$f" "app/build/outputs/apk/release/PersonalOvertimeRecord_v${VERSION}_release.apk"
             else
-              mv "$f" "app/build/outputs/apk/release/PersonalOvertimeRecord_v${BASE_VERSION}_release_${count}.apk"
+              mv "$f" "app/build/outputs/apk/release/PersonalOvertimeRecord_v${VERSION}_release_${count}.apk"
             fi
           done
           echo "--- debug ---"; ls -1 app/build/outputs/apk/debug/

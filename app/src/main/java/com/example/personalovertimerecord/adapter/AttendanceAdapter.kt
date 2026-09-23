@@ -4,6 +4,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
+import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
@@ -86,13 +87,13 @@ class AttendanceAdapter(
                 extraLayout.visibility = View.GONE
                 tvOvertimeLabel.text = "工作时长"
                 tvOvertime.text = "${(attendance.leaveHours * 8).toInt()}h"
-                tvOvertime.setTextColor(0xFFFF9800.toInt()) // 橙色
+                tvOvertime.setTextColor(ContextCompat.getColor(itemView.context, R.color.leave_hours_color))
                 tvOvertimePay.text = Formatter.formatLeaveInfo(attendance.leaveType, attendance.leaveHours)
             } else {
                 leaveLayout.visibility = View.GONE
                 extraLayout.visibility = View.VISIBLE
                 tvOvertimeLabel.text = "加班时长"
-                tvOvertime.setTextColor(0xFF2196F3.toInt()) // 蓝色
+                tvOvertime.setTextColor(ContextCompat.getColor(itemView.context, R.color.overtime_hours_color))
                 
                 val result = OvertimeCalculator.calculateOvertime(attendance, settings)
                 tvOvertime.text = Formatter.formatHoursShort(result.overtimeHours)

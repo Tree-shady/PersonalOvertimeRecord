@@ -15,7 +15,7 @@ plugins {
 // 否则 defaultConfig 内赋值时右侧会解析成 self-assignment，导致 APK 版本号为空（与下方签名配置同理）
 val versionPropsFile = file("version.properties")
 var appVersionCode = 1
-var appVersionName = "0.1.4"
+var appVersionName = "0.1.7"
 
 val ciVersionName = project.findProperty("ciVersionName") as String?
 val ciVersionCode = project.findProperty("ciVersionCode") as String?
@@ -39,7 +39,7 @@ if (!ciVersionName.isNullOrBlank() && !ciVersionCode.isNullOrBlank()) {
     val props = Properties()
     versionPropsFile.inputStream().use { props.load(it) }
     val buildNumber = props.getProperty("BUILD_NUMBER", "1").toInt()
-    val baseVersion = props.getProperty("BASE_VERSION", "0.1.4")
+    val baseVersion = props.getProperty("BASE_VERSION", "0.1.7")
     
     // 递增构建号
     val newBuildNumber = if (producesArtifact) buildNumber + 1 else buildNumber
@@ -56,12 +56,12 @@ if (!ciVersionName.isNullOrBlank() && !ciVersionCode.isNullOrBlank()) {
 } else {
     // 首次创建版本文件
     val props = Properties()
-    props.setProperty("BASE_VERSION", "0.1.4")
+    props.setProperty("BASE_VERSION", "0.1.7")
     props.setProperty("BUILD_NUMBER", "1")
     versionPropsFile.outputStream().use { props.store(it, "Initial version properties") }
-    
+
     appVersionCode = 1
-    appVersionName = "0.1.4"
+    appVersionName = "0.1.7"
     
     println("🔢 Version initialized: $appVersionName (build #$appVersionCode)")
 }
@@ -124,7 +124,9 @@ android {
             }
         }
         release {
-            isMinifyEnabled = false
+            // R8 代码缩减与混淆：减小 APK 体积；Gson/SQLCipher/Room 等 keep 规则见 proguard-rules.pro
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -193,7 +195,7 @@ dependencies {
     implementation("com.google.code.gson:gson:2.10.1")
     
     // Security - Encrypted SharedPreferences
-    implementation("androidx.security:security-crypto:1.1.0-alpha06")
+    implementation("androidx.security:security-crypto:1.1.0")
     
     // SQLCipher - Database Encryption
     implementation("net.zetetic:android-database-sqlcipher:4.5.4")

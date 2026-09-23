@@ -23,4 +23,14 @@
     <color name="text_secondary">#FF757575</color>
     <color name="text_hint">#FF9E9E9E</color>
     <color name="status_bar">#FF6200EE</color>
+
+    <!-- 状态卡片（系统检查结果）- 与 values-night 对应 -->
+    <color name="status_success_container">#FFE8F5E9</color>
+    <color name="status_success_on_container">#FF2E7D32</color>
+    <color name="status_error_container">#FFFFEBEE</color>
+    <color name="status_error_on_container">#FFC62828</color>
+
+    <!-- 考勤列表时长文字 - 与 values-night 对应 -->
+    <color name="leave_hours_color">#FFFF9800</color>
+    <color name="overtime_hours_color">#FF2196F3</color>
 </resources>

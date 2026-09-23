@@ -20,3 +20,5 @@ local.properties
 # 嵌套项目副本（独立 Git 仓库，含敏感文件，避免误提交）
 /PersonalOvertimeRecord/
 debug.log
+# 本机构建号文件：assemble 会自动递增 BUILD_NUMBER，入库会导致 git 树常脏；版本以 CI tag 为准
+/app/version.properties
