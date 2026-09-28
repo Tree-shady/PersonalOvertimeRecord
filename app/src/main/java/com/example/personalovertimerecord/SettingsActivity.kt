@@ -310,15 +310,12 @@ class SettingsActivity : AppCompatActivity() {
     
     private fun loadSettings() {
         val currentSettings = settingsManager.getSettings()
-        
+
         binding.shiftGroup.check(R.id.shiftNormal)
         binding.customTimeLayout.visibility = View.GONE
-        
+
         binding.etWorkStart.setText(currentSettings.workStartTime)
         binding.etWorkEnd.setText(currentSettings.workEndTime)
-        binding.etRateNormal.setText(currentSettings.overtimeRateNormal.toString())
-        binding.etRateWeekend.setText(currentSettings.overtimeRateWeekend.toString())
-        binding.etRateHoliday.setText(currentSettings.overtimeRateHoliday.toString())
         binding.etBaseSalary.setText(currentSettings.baseSalary.toString())
         binding.etPerformancePercent.setText(currentSettings.performancePercent.toString())
         binding.etMonthlyWorkDays.setText(currentSettings.monthlyWorkDays.toString())
@@ -355,25 +352,26 @@ class SettingsActivity : AppCompatActivity() {
         try {
             val workStart = binding.etWorkStart.text?.toString() ?: "08:00"
             val workEnd = binding.etWorkEnd.text?.toString() ?: "17:00"
-            
-            val rateNormal = binding.etRateNormal.text?.toString()?.toDoubleOrNull() ?: 1.5
-            val rateWeekend = binding.etRateWeekend.text?.toString()?.toDoubleOrNull() ?: 2.0
-            val rateHoliday = binding.etRateHoliday.text?.toString()?.toDoubleOrNull() ?: 3.0
+
             val baseSalary = binding.etBaseSalary.text?.toString()?.toDoubleOrNull() ?: 5000.0
             val performancePercent = binding.etPerformancePercent.text?.toString()?.toDoubleOrNull() ?: 0.0
             val monthlyWorkDays = binding.etMonthlyWorkDays.text?.toString()?.toDoubleOrNull() ?: 21.75
             val dailyWorkHours = binding.etDailyWorkHours.text?.toString()?.toDoubleOrNull() ?: 8.0
-            
-            if (!validateInput(rateNormal, rateWeekend, rateHoliday, baseSalary, monthlyWorkDays, dailyWorkHours)) {
+
+            if (!validateInput(baseSalary, monthlyWorkDays, dailyWorkHours)) {
                 return
             }
-            
+
+            // 工资倍率已从设置页移除，改在添加/编辑加班记录时按条自定义；
+            // 保留本地已存储的倍率值，作为新记录的默认倍率来源（老用户已改过的默认值不丢）
+            val currentRates = settingsManager.getSettings()
+
             val settings = OvertimeSettings(
                 workStartTime = workStart,
                 workEndTime = workEnd,
-                overtimeRateNormal = rateNormal,
-                overtimeRateWeekend = rateWeekend,
-                overtimeRateHoliday = rateHoliday,
+                overtimeRateNormal = currentRates.overtimeRateNormal,
+                overtimeRateWeekend = currentRates.overtimeRateWeekend,
+                overtimeRateHoliday = currentRates.overtimeRateHoliday,
                 baseSalary = baseSalary,
                 performancePercent = performancePercent,
                 monthlyWorkDays = monthlyWorkDays,
@@ -561,9 +559,6 @@ class SettingsActivity : AppCompatActivity() {
     }
     
     private fun validateInput(
-        rateNormal: Double,
-        rateWeekend: Double,
-        rateHoliday: Double,
         baseSalary: Double,
         monthlyWorkDays: Double,
         dailyWorkHours: Double
@@ -578,10 +573,6 @@ class SettingsActivity : AppCompatActivity() {
         }
         if (dailyWorkHours <= 0 || dailyWorkHours > 24) {
             Toast.makeText(this, "每日工作时长应在0.1-24之间", Toast.LENGTH_SHORT).show()
-            return false
-        }
-        if (rateNormal < 1.0 || rateWeekend < 1.0 || rateHoliday < 1.0) {
-            Toast.makeText(this, "加班倍率不能小于1", Toast.LENGTH_SHORT).show()
             return false
         }
         return true

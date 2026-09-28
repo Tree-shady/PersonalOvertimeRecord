@@ -46,6 +46,15 @@ class WebDAVManager(private val context: Context) {
         /** 需要处理的 HTTP 重定向状态码 */
         private val REDIRECT_STATUS_CODES = setOf(301, 302, 303, 307, 308)
 
+        /** 瞬态错误自动重试的最大次数（首次请求之外） */
+        private const val MAX_RETRIES = 2
+
+        /** 重试退避基数：第 1 次重试等 1s，第 2 次等 2s（指数退避） */
+        private const val RETRY_BACKOFF_BASE_MS = 1000L
+
+        /** 可自动重试的瞬态 HTTP 状态码：请求超时、限流、网关过载（如坚果云高峰期 503） */
+        private val RETRYABLE_STATUS_CODES = setOf(408, 429, 502, 503, 504)
+
         /** 常见两段式公共后缀（此类域名注册域需取最后三段） */
         private val TWO_LEVEL_PUBLIC_SUFFIXES = setOf(
             "com.cn", "net.cn", "org.cn", "gov.cn", "edu.cn", "ac.cn",
@@ -307,6 +316,7 @@ class WebDAVManager(private val context: Context) {
         val originalUrl = URL(url)
         var currentUrl = url
         var redirectCount = 0
+        var retryCount = 0
 
         while (true) {
             var connection: HttpURLConnection? = null
@@ -350,8 +360,27 @@ class WebDAVManager(private val context: Context) {
                     }
                 }
 
+                // 服务端瞬态错误（限流/过载）：指数退避后自动重试，缓解"同步失败（响应码 503）"
+                if (responseCode in RETRYABLE_STATUS_CODES && retryCount < MAX_RETRIES) {
+                    retryCount++
+                    val backoff = RETRY_BACKOFF_BASE_MS * retryCount
+                    AppLogger.w("WebDAV", "服务器瞬态错误 $responseCode，${backoff}ms 后进行第 $retryCount 次重试: $method $currentUrl")
+                    Thread.sleep(backoff)
+                    continue
+                }
+
                 // 处理响应
                 return handleResponse(connection)
+            } catch (e: IOException) {
+                // 网络瞬态异常（超时/连接重置等）也自动重试；重试次数耗尽则原样抛出
+                if (retryCount < MAX_RETRIES) {
+                    retryCount++
+                    val backoff = RETRY_BACKOFF_BASE_MS * retryCount
+                    AppLogger.w("WebDAV", "网络异常（${e.javaClass.simpleName}: ${e.message}），${backoff}ms 后进行第 $retryCount 次重试: $method $currentUrl")
+                    Thread.sleep(backoff)
+                    continue
+                }
+                throw e
             } finally {
                 connection?.disconnect()
             }

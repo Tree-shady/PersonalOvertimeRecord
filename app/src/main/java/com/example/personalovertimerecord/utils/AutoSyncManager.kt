@@ -250,12 +250,12 @@ object AutoSyncManager {
 
                 val database = OvertimeApplication.getDatabase()
                 val syncManager = SyncManager(context, settingsManager, database)
-                val result = syncManager.performSync()
-                // NO_CHANGES 表示“本地没有需要同步的更改”，属于正常完成，不应提示失败
-                val success = result == SyncResult.SUCCESS || result == SyncResult.NO_CHANGES
+                val report = syncManager.performSync()
+                // NO_CHANGES 表示"本地没有需要同步的更改"，属于正常完成，不应提示失败
+                val success = report.isSuccess
 
-                // 失败时给出具体原因（含服务器响应码），避免只显示笼统的“同步失败”
-                val message = when (result) {
+                // 失败时给出具体原因（含服务器响应码），避免只显示笼统的"同步失败"
+                val baseMessage = when (report.result) {
                     SyncResult.SUCCESS -> "同步成功"
                     SyncResult.NO_CHANGES -> "没有需要同步的更改"
                     SyncResult.NO_CONFIG -> "未配置WebDAV"
@@ -267,6 +267,8 @@ object AutoSyncManager {
                     SyncResult.CONFLICT -> "存在数据冲突，请手动处理"
                     SyncResult.ENCRYPTION_MISMATCH -> "云端数据已加密，请检查同步加密密码是否与上传设备一致"
                 }
+                // 成功时附带同步统计细节
+                val message = if (success) "$baseMessage（${report.toSummaryString()}）" else baseMessage
 
                 withContext(Dispatchers.Main) {
                     onComplete?.invoke(success, message)

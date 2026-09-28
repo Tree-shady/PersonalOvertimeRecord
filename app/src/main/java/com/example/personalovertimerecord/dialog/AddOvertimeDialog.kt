@@ -35,10 +35,15 @@ class AddOvertimeDialog(
     private lateinit var leaveOptionsLayout: View
     private lateinit var actvLeaveType: AutoCompleteTextView
     private lateinit var actvLeaveHours: AutoCompleteTextView
+    private lateinit var actvRate: AutoCompleteTextView
     private var selectedLeaveType: LeaveType = LeaveType.ANNUAL_LEAVE
-    
+
     // 加班/加点选项，最大11小时
     private val hourOptions: List<String> = (1..22).map { "${it * 0.5}" } // 0.5, 1.0, 1.5, ... 11.0
+
+    // 倍率选项：默认 + 1.0~4.0（0.5 步进，含法定 1.5/2.0/3.0 与常见协商值），也可手动输入该区间内的数值
+    private val rateOptions: List<String> =
+        listOf("默认") + (2..8).map { "${it * 0.5}" }
     
     // 计算当月剩余天数（用于请假上限）
     private val maxLeaveDays: Int by lazy {
@@ -79,6 +84,7 @@ class AddOvertimeDialog(
         leaveOptionsLayout = findViewById(R.id.leaveOptionsLayout)
         actvLeaveType = findViewById(R.id.actvLeaveType)
         actvLeaveHours = findViewById(R.id.actvLeaveHours)
+        actvRate = findViewById(R.id.actvRate)
         
         val tvDate = findViewById<TextView>(R.id.tvDate)
         val dateStr = String.format(Locale.getDefault(), "%d-%02d-%02d", year, month + 1, day)
@@ -94,10 +100,19 @@ class AddOvertimeDialog(
         
         actvOvertimeHours.setAdapter(hourAdapter)
         actvExtraHours.setAdapter(hourAdapter)
-        
+
         // 默认选择空白
         actvOvertimeHours.setText("", false)
         actvExtraHours.setText("", false)
+
+        // 倍率下拉：默认按日期类型自动计算，也可选择/输入自定义倍率
+        val rateAdapter = ArrayAdapter(
+            context,
+            android.R.layout.simple_dropdown_item_1line,
+            rateOptions
+        )
+        actvRate.setAdapter(rateAdapter)
+        actvRate.setText("默认", false)
     }
     
     private fun setupLeaveTypeDropdown() {
@@ -132,6 +147,10 @@ class AddOvertimeDialog(
             }
             if (existingRecord.extraHours > 0) {
                 actvExtraHours.setText(existingRecord.extraHours.toString(), false)
+            }
+            // 回填自定义倍率（未自定义时保持"默认"）
+            if (existingRecord.customRate >= 0) {
+                actvRate.setText(existingRecord.customRate.toString(), false)
             }
             etNote.setText(existingRecord.note ?: "")
             
@@ -250,7 +269,26 @@ class AddOvertimeDialog(
         
         val finalOvertime = overtimeHours ?: 0.0
         val finalExtra = extraHours ?: 0.0
-        
+
+        // 解析自定义倍率："默认"或留空 → -1（按设置默认倍率计算）；合法区间 [1.0, 4.0]
+        val rateText = actvRate.text?.toString()?.trim() ?: ""
+        val customRate = when {
+            rateText.isEmpty() || rateText == "默认" -> -1.0
+            else -> rateText.toDoubleOrNull()
+        }
+        if (rateText.isNotEmpty() && rateText != "默认") {
+            when {
+                customRate == null || customRate < 1.0 -> {
+                    Toast.makeText(context, "工资倍率不能小于1", Toast.LENGTH_SHORT).show()
+                    return
+                }
+                customRate > 4.0 -> {
+                    Toast.makeText(context, "工资倍率不能大于4", Toast.LENGTH_SHORT).show()
+                    return
+                }
+            }
+        }
+
         if (existingRecord != null && onSaveRecord != null) {
             val updatedRecord = existingRecord.copy(
                 overtimeHours = if (finalOvertime > 0) finalOvertime else -1.0,
@@ -258,6 +296,7 @@ class AddOvertimeDialog(
                 isLeave = false,
                 leaveType = null,
                 leaveHours = 0.0,
+                customRate = customRate ?: -1.0,
                 note = if (note.isNullOrEmpty()) null else note
             )
             onSaveRecord?.invoke(updatedRecord)
@@ -270,6 +309,7 @@ class AddOvertimeDialog(
                 isLeave = false,
                 leaveType = null,
                 leaveHours = 0.0,
+                customRate = customRate ?: -1.0,
                 note = if (note.isNullOrEmpty()) null else note
             )
             onSaveRecord?.invoke(newRecord)

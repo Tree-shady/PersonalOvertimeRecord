@@ -48,20 +48,22 @@ object OvertimeCalculator {
         // 归一化 -1 哨兵值（未手工设置）为 0
         val overtimeHours = if (record.overtimeHours >= 0) record.overtimeHours else 0.0
         val extraHours = if (record.extraHours >= 0) record.extraHours else 0.0
-        
+
         return calculateInternal(
             date = record.date,
             overtimeHours = overtimeHours,
             extraHours = extraHours,
-            settings = settings
+            settings = settings,
+            customRate = record.customRate
         )
     }
-    
+
     private fun calculateInternal(
         date: String,
         overtimeHours: Double,
         extraHours: Double,
-        settings: OvertimeSettings
+        settings: OvertimeSettings,
+        customRate: Double = -1.0
     ): OvertimeResult {
         // 以登记内容为准分类：登记"加点"按工作日、登记"加班"按周末/节假日
         val dayType = effectiveDayType(date, overtimeHours, extraHours)
@@ -83,7 +85,7 @@ object OvertimeCalculator {
         }
         
         val estimatedPay = calculateOvertimePay(
-            normalOvertime, weekendOvertime, holidayOvertime, extraHours, settings
+            normalOvertime, weekendOvertime, holidayOvertime, extraHours, settings, customRate
         )
         
         return OvertimeResult(
@@ -102,16 +104,23 @@ object OvertimeCalculator {
         weekendOvertime: Double,
         holidayOvertime: Double,
         extraHours: Double,
-        settings: OvertimeSettings
+        settings: OvertimeSettings,
+        customRate: Double = -1.0
     ): Double {
         // 统一口径：见 hourlyWage()
         val hourlyWage = OvertimeCalculator.hourlyWage(settings)
-        
+
+        // 记录自定义倍率：该条记录整体（含加班与加点）按 customRate 计算，覆盖按日期类型的默认倍率
+        if (customRate >= 0) {
+            val totalHours = normalOvertime + weekendOvertime + holidayOvertime + extraHours
+            return totalHours * hourlyWage * customRate
+        }
+
         val normalPay = normalOvertime * hourlyWage * settings.overtimeRateNormal
         val weekendPay = weekendOvertime * hourlyWage * settings.overtimeRateWeekend
         val holidayPay = holidayOvertime * hourlyWage * settings.overtimeRateHoliday
         val extraPay = extraHours * hourlyWage * settings.overtimeRateNormal
-        
+
         return normalPay + weekendPay + holidayPay + extraPay
     }
 }

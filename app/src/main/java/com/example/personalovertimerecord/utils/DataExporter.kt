@@ -2,6 +2,7 @@ package com.example.personalovertimerecord.utils
 
 import android.content.Context
 import android.net.Uri
+import android.os.Build
 import androidx.room.withTransaction
 import com.example.personalovertimerecord.data.OvertimeSettings
 import com.example.personalovertimerecord.data.SettingsManager
@@ -11,15 +12,35 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.security.MessageDigest
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+/**
+ * 备份/同步数据格式（v3）。
+ *
+ * v3 新增元数据字段，用于同步诊断与完整性校验：
+ * - appVersionName / appVersionCode：生成该备份的应用版本，便于未来做格式迁移与问题排查；
+ * - recordCount：记录条数，下载端可快速校验云端文件是否完整；
+ * - deviceName：生成设备型号，多设备同步时可定位数据来源；
+ * - checksum：考勤记录列表的 SHA-256 摘要，恢复前校验云端文件是否被篡改/损坏；
+ * - lastSyncTime：生成该备份时本机的最后同步时间戳。
+ *
+ * 旧版（v1/v2）备份缺少上述字段，sanitized() 会用安全默认值补齐，保证向后兼容。
+ */
 data class BackupData(
     val version: Int = 1,
     val exportTime: Long = System.currentTimeMillis(),
     val settings: OvertimeSettings,
-    val attendanceRecords: List<AttendanceEntityBackup>
+    val attendanceRecords: List<AttendanceEntityBackup>,
+    // ---- v3 同步元数据 ----
+    val appVersionName: String = "",
+    val appVersionCode: Int = 0,
+    val recordCount: Int = 0,
+    val deviceName: String = "",
+    val checksum: String = "",
+    val lastSyncTime: Long = 0L
 ) {
     /**
      * Gson 通过 Unsafe/反射构造对象，会绕过 Kotlin 的非空默认值；
@@ -30,8 +51,47 @@ data class BackupData(
         version = this.version,
         exportTime = this.exportTime,
         settings = this.settings ?: OvertimeSettings(),
-        attendanceRecords = this.attendanceRecords ?: emptyList()
+        attendanceRecords = this.attendanceRecords ?: emptyList(),
+        appVersionName = this.appVersionName ?: "",
+        appVersionCode = this.appVersionCode ?: 0,
+        recordCount = this.recordCount ?: 0,
+        deviceName = this.deviceName ?: "",
+        checksum = this.checksum ?: "",
+        lastSyncTime = this.lastSyncTime ?: 0L
     )
+
+    /**
+     * 校验考勤记录的完整性：若 checksum 非空，则重新计算摘要并比对。
+     * @return true 表示校验通过或未提供校验值；false 表示校验失败（数据可能被篡改/损坏）。
+     */
+    fun verifyChecksum(gson: Gson): Boolean {
+        if (checksum.isBlank()) return true
+        val actual = computeRecordsChecksum(attendanceRecords, gson)
+        return checksum.equals(actual, ignoreCase = true)
+    }
+
+    companion object {
+        /**
+         * 计算考勤记录列表的 SHA-256 摘要（十六进制小写），用于云端备份完整性校验。
+         * 用 Gson 序列化记录列表后再哈希，保证不同设备/平台对相同记录生成相同摘要。
+         */
+        fun computeRecordsChecksum(
+            records: List<AttendanceEntityBackup>,
+            gson: Gson
+        ): String {
+            val json = gson.toJson(records)
+            return MessageDigest.getInstance("SHA-256")
+                .digest(json.toByteArray(Charsets.UTF_8))
+                .joinToString("") { "%02x".format(it) }
+        }
+
+        /** 当前设备型号（厂商 + 型号），写入备份元数据 */
+        fun currentDeviceName(): String {
+            val manufacturer = Build.MANUFACTURER?.trim().orEmpty()
+            val model = Build.MODEL?.trim().orEmpty()
+            return listOf(manufacturer, model).filter { it.isNotBlank() }.joinToString(" ")
+        }
+    }
 }
 
 data class AttendanceEntityBackup(
@@ -49,8 +109,13 @@ data class AttendanceEntityBackup(
     val isLeave: Boolean = false,
     val leaveType: String? = null,
     val leaveHours: Double = 0.0,
+    // 自定义工资倍率：null 表示未自定义（按设置默认倍率计算）。
+    // 用可空类型而非 Double：Gson 反序列化旧备份缺失字段时，原始类型会得到 0.0 被误当作有效倍率
+    val customRate: Double? = null,
     // 软删除标记：true 表示该日期记录已被删除，用于跨设备同步删除
-    val isDeleted: Boolean = false
+    val isDeleted: Boolean = false,
+    // v3：最后修改该记录的设备型号，多设备同步时可定位数据来源；旧备份缺失时为空串
+    val lastModifiedBy: String = ""
 )
 
 class DataExporter(
@@ -85,8 +150,14 @@ class DataExporter(
 
                 // 备份设置剥离密码字段，避免明文备份文件泄露导出/同步加密密码
                 val backupData = BackupData(
+                    version = 3,
                     settings = settings.copy(exportPassword = "", syncPassword = ""),
-                    attendanceRecords = backupRecords
+                    attendanceRecords = backupRecords,
+                    appVersionName = com.example.personalovertimerecord.BuildConfig.VERSION_NAME,
+                    appVersionCode = com.example.personalovertimerecord.BuildConfig.VERSION_CODE,
+                    recordCount = backupRecords.size,
+                    deviceName = BackupData.currentDeviceName(),
+                    checksum = BackupData.computeRecordsChecksum(backupRecords, gson)
                 )
 
                 val json = gson.toJson(backupData)
@@ -150,6 +221,12 @@ class DataExporter(
                     }
                     // Gson 反序列化可能产生 null 字段，补齐安全默认值防止 NPE
                     val safeBackup = backupData.sanitized()
+
+                    // v3 完整性校验：若备份携带 checksum，比对考勤记录摘要，
+                    // 校验失败说明文件损坏/被篡改，拒绝恢复以保护现有数据
+                    if (!safeBackup.verifyChecksum(gson)) {
+                        throw Exception("备份文件校验失败（checksum 不匹配），文件可能已损坏或被篡改，已中止恢复")
+                    }
 
                     withContext(Dispatchers.Main) {
                         onSuccess(safeBackup)
@@ -218,7 +295,9 @@ class DataExporter(
             modifiedAt = modified,
             manualOvertimeHours = if (manualOvertimeHours.isNaN()) -1.0 else manualOvertimeHours,
             manualExtraHours = if (manualExtraHours.isNaN()) -1.0 else manualExtraHours,
-            leaveHours = if (leaveHours.isNaN()) 0.0 else leaveHours
+            leaveHours = if (leaveHours.isNaN()) 0.0 else leaveHours,
+            // v3 新增字段：旧备份缺失时 Gson 可能置 null，补空串避免下游 NPE
+            lastModifiedBy = lastModifiedBy ?: ""
         )
     }
 
@@ -392,6 +471,7 @@ class DataExporter(
             isLeave = record.isLeave,
             leaveType = record.leaveType,
             leaveHours = record.leaveHours,
+            customRate = record.customRate?.takeIf { it >= 0 } ?: -1.0,
             isDeleted = isDeleted
         )
     }
@@ -411,7 +491,9 @@ class DataExporter(
             isLeave = this.isLeave,
             leaveType = this.leaveType,
             leaveHours = this.leaveHours,
-            isDeleted = this.isDeleted
+            customRate = this.customRate.takeIf { it >= 0 },
+            isDeleted = this.isDeleted,
+            lastModifiedBy = BackupData.currentDeviceName()
         )
     }
 

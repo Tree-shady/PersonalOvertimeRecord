@@ -120,7 +120,9 @@ jobs:
             CHANGES=$(git log --oneline -10)
           fi
 
-          # minVersionCode 填 0 表示非强制更新；需要强制时把 0 改为目标最低版本号
+          # minVersionCode 填 0、minVersionName 填空串表示非强制更新；
+          # 需要强制时把 minVersionName 设为目标最低版本号（如 "1.2.0"），
+          # 或把 minVersionCode 设为目标最低 versionCode（两者择一即可，minVersionName 优先）。
           jq -n \
             --arg versionCode "$CODE" \
             --arg versionName "$VERSION" \
@@ -128,7 +130,8 @@ jobs:
             --arg sha256 "$SHA256" \
             --arg changelog "$CHANGES" \
             --argjson minVersionCode 0 \
-            '{versionCode: ($versionCode|tonumber), versionName: $versionName, apkUrl: $apkUrl, sha256: $sha256, changelog: $changelog, minVersionCode: $minVersionCode}' \
+            --arg minVersionName "" \
+            '{versionCode: ($versionCode|tonumber), versionName: $versionName, apkUrl: $apkUrl, sha256: $sha256, changelog: $changelog, minVersionCode: $minVersionCode, minVersionName: $minVersionName}' \
             > app/build/outputs/apk/release/latest.json
 
           echo "=== latest.json ==="

@@ -51,8 +51,6 @@ import java.util.Date
 class MainActivity : AppCompatActivity() {
     
     companion object {
-        private const val TIME_UPDATE_INTERVAL = 5000L
-        
         /**
          * 生物识别验证通过的标志，由 BiometricActivity 验证成功后
          * 携带此标志重新进入 MainActivity，避免无限循环触发验证。
@@ -247,7 +245,12 @@ class MainActivity : AppCompatActivity() {
         timeUpdateJob = lifecycleScope.launch {
             while (true) {
                 updateCurrentTime()
-                delay(TIME_UPDATE_INTERVAL)
+                // 对齐到下一个整秒再刷新：时间显示精确到秒，固定 delay 会漂移，
+                // 导致秒数偶尔跳变不均匀（表现为时间"一卡一卡"）
+                delay(
+                    Constants.TIME_UPDATE_INTERVAL -
+                        System.currentTimeMillis() % Constants.TIME_UPDATE_INTERVAL
+                )
             }
         }
     }
@@ -434,11 +437,11 @@ class MainActivity : AppCompatActivity() {
         progressDialog.show()
         
         lifecycleScope.launch {
-            val result = syncManager.performSync(direction, options)
+            val report = syncManager.performSync(direction, options)
             
             progressDialog.dismiss()
             
-            val message = when (result) {
+            val baseMessage = when (report.result) {
                 SyncResult.SUCCESS -> "同步成功！"
                 SyncResult.NO_CONFIG -> "请先在设置中配置 WebDAV"
                 SyncResult.NO_NETWORK -> "网络不可用，请检查网络连接"
@@ -449,6 +452,12 @@ class MainActivity : AppCompatActivity() {
                 SyncResult.NO_CHANGES -> "没有需要同步的更改"
                 SyncResult.CONFLICT -> "存在数据冲突，请手动处理"
                 SyncResult.ENCRYPTION_MISMATCH -> "云端数据已加密，请检查同步加密密码是否与上传设备一致"
+            }
+            // 成功时附带同步统计细节
+            val message = if (report.isSuccess) {
+                "$baseMessage（${report.toSummaryString()}）"
+            } else {
+                baseMessage
             }
             
             Toast.makeText(this@MainActivity, message, Toast.LENGTH_SHORT).show()

@@ -33,13 +33,12 @@ class AutoSyncWorker(
         return try {
             val database = OvertimeApplication.getDatabase()
             val syncManager = SyncManager(context, settingsManager, database)
-            when (syncManager.performSync()) {
-                SyncResult.SUCCESS,
-                SyncResult.NO_CHANGES -> Result.success()
-                else -> {
-                    AutoSyncManager.notifySyncFailure(context)
-                    Result.retry()
-                }
+            val report = syncManager.performSync()
+            if (report.isSuccess) {
+                Result.success()
+            } else {
+                AutoSyncManager.notifySyncFailure(context)
+                Result.retry()
             }
         } catch (e: Exception) {
             AppLogger.e(TAG, "自动同步异常", e)

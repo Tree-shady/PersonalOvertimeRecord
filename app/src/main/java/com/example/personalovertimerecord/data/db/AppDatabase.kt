@@ -12,7 +12,7 @@ import net.sqlcipher.database.SupportFactory
 
 @Database(
     entities = [AttendanceEntity::class],
-    version = 6,
+    version = 7,
     // 导出 schema 供迁移测试与人工审阅；schema JSON 需随代码提交到 app/schemas/
     exportSchema = true
 )
@@ -181,8 +181,19 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        // 从版本6迁移到版本7（新增每条记录的自定义工资倍率）：
+        // customRate < 0 表示未自定义（按设置默认倍率计算），与实体 -1 哨兵默认值一致；
+        // 旧行统一填 -1，历史记录的计算口径完全不变。
+        private val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    "ALTER TABLE attendance_records ADD COLUMN customRate REAL NOT NULL DEFAULT -1.0"
+                )
+            }
+        }
+
         /**
-         * 全部迁移（1→2 … 5→6），构建器与迁移测试共用同一份。
+         * 全部迁移（1→2 … 6→7），构建器与迁移测试共用同一份。
          * 注意：需声明在所有 MIGRATION_x_y 之后。
          */
         @JvmField
@@ -191,7 +202,8 @@ abstract class AppDatabase : RoomDatabase() {
             MIGRATION_2_3,
             MIGRATION_3_4,
             MIGRATION_4_5,
-            MIGRATION_5_6
+            MIGRATION_5_6,
+            MIGRATION_6_7
         )
     }
 }

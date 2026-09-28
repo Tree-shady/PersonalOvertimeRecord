@@ -26,6 +26,9 @@ data class OvertimeRecord(
     val isLeave: Boolean = false,
     val leaveType: String? = null,
     val leaveHours: Double = 0.0,
+    // 自定义工资倍率：< 0 表示未自定义（按设置中的默认倍率 1.5/2.0/3.0 计算），
+    // >= 0 表示该条记录整体按此倍率计算（在添加/编辑记录对话框中手动选择）
+    val customRate: Double = -1.0,
     // 导出/展示用归一化字段
     val dayType: String = "平时",
     val totalPay: Double = 0.0
